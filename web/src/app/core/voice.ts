@@ -1,7 +1,8 @@
 import { Injectable, computed, effect, signal, untracked } from '@angular/core';
 import { Api } from './api';
 import { Gateway } from './gateway';
-import { Prefs, StreamSettings } from './prefs';
+import { MicLevel, MicPipeline } from './mic';
+import { MicSettings, Prefs, StreamSettings } from './prefs';
 import { sounds } from './sounds';
 import { Store } from './store';
 import { Ui } from './ui';
@@ -129,6 +130,9 @@ export class Voice {
   readonly hasMic = signal(true);
   /** Whether the server handed us a TURN relay (needed behind CGNAT / strict firewalls). */
   readonly relay = signal(false);
+  /** Live mic level while in a call (for the sensitivity meter). */
+  readonly micLevel = signal<MicLevel | null>(null);
+  readonly pttDown = signal(false);
 
   readonly connectionLabel = computed(() => {
     if (!this.channelId()) return '';
@@ -143,7 +147,7 @@ export class Voice {
   private peers = new Map<string, Peer>();
   private iceServers: RTCIceServer[] = [];
   private audioCtx: AudioContext | null = null;
-  private localAnalyser: { node: AnalyserNode; data: Uint8Array<ArrayBuffer> } | null = null;
+  private pipe: MicPipeline | null = null;
   private speakTimer: ReturnType<typeof setInterval> | null = null;
   private lastSpoke = new Map<number, number>();
   private streamCodec: string | null = null;
@@ -157,6 +161,16 @@ export class Voice {
   ) {
     this.mute.set(prefs.get('mute'));
     this.deaf.set(prefs.get('deaf'));
+
+    // Push-to-talk works while the app window has focus (a browser can't see keys elsewhere).
+    window.addEventListener('keydown', (e) => {
+      const key = this.prefs.get('mic').pttKey;
+      if (key && e.code === key && !e.repeat) this.setPtt(true);
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.code === this.prefs.get('mic').pttKey) this.setPtt(false);
+    });
+    window.addEventListener('blur', () => this.setPtt(false));
 
     // Keep one peer connection per other session in our channel.
     effect(() => {
@@ -397,8 +411,26 @@ export class Voice {
 
   async changeInputDevice(deviceId: string) {
     this.prefs.set('inputDevice', deviceId);
-    if (!this.active()) return;
-    const old = this.mic;
+    if (this.active()) await this.restartMic();
+  }
+
+  /** Applies Discord-style mic settings; processing changes reopen the mic, the rest is live. */
+  async updateMicSettings(next: MicSettings) {
+    const prev = this.prefs.get('mic');
+    this.prefs.set('mic', next);
+    if (!this.pipe) return;
+    if (MicPipeline.needsRestart(prev, next)) await this.restartMic();
+    else this.pipe.update(next);
+  }
+
+  /** Push-to-talk key state, also used by the settings screen's preview. */
+  setPtt(down: boolean) {
+    if (this.pttDown() === down) return;
+    this.pttDown.set(down);
+    this.pipe?.setPtt(down);
+  }
+
+  private async restartMic() {
     await this.startMic();
     const track = this.mic?.getAudioTracks()[0] ?? null;
     for (const p of this.peers.values()) {
@@ -406,7 +438,7 @@ export class Voice {
       if (sender) await sender.replaceTrack(track);
       else if (track && this.mic) p.senders.push(p.pc.addTrack(track, this.mic));
     }
-    old?.getTracks().forEach((t) => t.stop());
+    if (this.active()) this.sendState();
   }
 
   changeOutputDevice(deviceId: string) {
@@ -428,23 +460,21 @@ export class Voice {
   }
 
   private async startMic() {
-    const dev = this.prefs.get('inputDevice');
     try {
-      this.mic = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: dev !== 'default' ? { exact: dev } : undefined,
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      const pipe = await MicPipeline.create(this.prefs.get('inputDevice'), this.prefs.get('mic'));
+      this.pipe?.destroy();
+      this.pipe = pipe;
+      this.mic = pipe.stream;
+      pipe.onLevel = (l) => this.micLevel.set({ ...l });
+      pipe.setPtt(this.pttDown());
       this.hasMic.set(true);
       this.applyMute();
-      this.localAnalyser = this.makeAnalyser(this.mic);
     } catch {
+      this.pipe?.destroy();
+      this.pipe = null;
       this.mic = null;
+      this.micLevel.set(null);
       this.hasMic.set(false);
-      this.localAnalyser = null;
       this.ui.toast('Não foi possível acessar o microfone. Você entrou só para ouvir.', 'error');
     }
   }
@@ -457,7 +487,7 @@ export class Voice {
   private applyOutput() {
     const sink = this.prefs.get('outputDevice');
     for (const p of this.peers.values()) {
-      const vol = Math.min(1, this.userVolume(p.userId) / 100);
+      const vol = Math.min(1, (this.userVolume(p.userId) / 100) * (this.prefs.get('outputVolume') / 100));
       for (const el of [p.micAudio, p.screenAudio]) {
         el.muted = this.deaf();
         el.volume = vol;
@@ -492,7 +522,8 @@ export class Voice {
     this.speakTimer = setInterval(() => {
       const now = Date.now();
       const me = this.store.me()?.id;
-      if (me != null && this.localAnalyser && !this.mute() && !this.deaf() && this.level(this.localAnalyser) > SPEAK_THRESHOLD) {
+      // You count as speaking while the voice gate is open (voice activity or push-to-talk).
+      if (me != null && this.pipe?.level.open && this.pipe.level.db > -75 && !this.mute() && !this.deaf()) {
         this.lastSpoke.set(me, now);
       }
       for (const p of this.peers.values()) {
@@ -723,9 +754,10 @@ export class Voice {
     for (const sid of [...this.peers.keys()]) this.closePeer(sid);
     this.stopCamera();
     this.stopScreen();
-    this.mic?.getTracks().forEach((t) => t.stop());
+    this.pipe?.destroy();
+    this.pipe = null;
     this.mic = null;
-    this.localAnalyser = null;
+    this.micLevel.set(null);
     if (this.speakTimer) clearInterval(this.speakTimer);
     this.speakTimer = null;
     this.lastSpoke.clear();

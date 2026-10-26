@@ -10,6 +10,7 @@ import { avatarUrl, defaultAvatarColor } from '../../core/util';
 import { Avatar, Icon } from '../shared';
 import { confirmDialog, promptDialog } from './dialogs';
 import { StreamOptions } from './go-live';
+import { VoiceSettings } from './voice-settings';
 import { pickImage, squareImage } from './image';
 import { StreamSettings } from '../../core/prefs';
 import { THEMES } from '../../core/themes';
@@ -20,7 +21,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
 
 @Component({
   selector: 'app-user-settings',
-  imports: [FormsModule, Icon, Avatar, StreamOptions],
+  imports: [FormsModule, Icon, Avatar, StreamOptions, VoiceSettings],
   template: `
     @if (store.me(); as me) {
       <div class="settings-layer">
@@ -134,46 +135,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                 </div>
               }
               @case ('voice') {
-                <h2>Configurações de voz</h2>
-                <div class="two-col">
-                  <div>
-                    <label class="field-label">Dispositivo de entrada</label>
-                    <select class="input" [ngModel]="prefs.data().inputDevice" (ngModelChange)="voice.changeInputDevice($event)">
-                      <option value="default">Padrão</option>
-                      @for (d of inputs(); track d.deviceId) {
-                        <option [value]="d.deviceId">{{ d.label || 'Microfone' }}</option>
-                      }
-                    </select>
-                  </div>
-                  <div>
-                    <label class="field-label">Dispositivo de saída</label>
-                    <select class="input" [ngModel]="prefs.data().outputDevice" (ngModelChange)="voice.changeOutputDevice($event)">
-                      <option value="default">Padrão</option>
-                      @for (d of outputs(); track d.deviceId) {
-                        <option [value]="d.deviceId">{{ d.label || 'Alto-falante' }}</option>
-                      }
-                    </select>
-                  </div>
-                </div>
-                <label class="field-label">Teste de microfone</label>
-                <div class="mic-test">
-                  <button class="btn btn-brand" (click)="toggleMicTest()">{{ testing() ? 'Parar' : 'Vamos checar' }}</button>
-                  <div class="mic-meter">
-                    @for (i of meterBars; track i) {
-                      <span [class.on]="level() > i * 4"></span>
-                    }
-                  </div>
-                </div>
-                <p class="hint">Fale alguma coisa: as barrinhas devem acender. O app já usa cancelamento de eco e supressão de ruído.</p>
-                <div class="settings-divider"></div>
-                <h2>Configurações de vídeo</h2>
-                <label class="field-label">Câmera</label>
-                <select class="input" [ngModel]="prefs.data().videoDevice" (ngModelChange)="prefs.set('videoDevice', $event)">
-                  <option value="default">Padrão</option>
-                  @for (d of cameras(); track d.deviceId) {
-                    <option [value]="d.deviceId">{{ d.label || 'Câmera' }}</option>
-                  }
-                </select>
+                <app-voice-settings />
               }
               @case ('appearance') {
                 <h2>Aparência</h2>
@@ -278,19 +240,10 @@ export class UserSettings {
   readonly banners = BANNERS;
   readonly baseThemes = THEMES.filter((t) => t.group === 'base');
   readonly colorThemes = THEMES.filter((t) => t.group === 'color');
-  readonly meterBars = Array.from({ length: 30 }, (_, i) => i);
   readonly section = signal<Section>('account');
   readonly pwError = signal('');
-  readonly devices = signal<MediaDeviceInfo[]>([]);
-  readonly inputs = computed(() => this.devices().filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default'));
-  readonly outputs = computed(() => this.devices().filter((d) => d.kind === 'audiooutput' && d.deviceId !== 'default'));
-  readonly cameras = computed(() => this.devices().filter((d) => d.kind === 'videoinput'));
-  readonly testing = signal(false);
-  readonly level = signal(0);
   readonly permission = signal('Notification' in window ? Notification.permission : 'denied');
   readonly fallbackBanner = computed(() => defaultAvatarColor(this.store.me()?.id ?? 0));
-  private testStream: MediaStream | null = null;
-  private testTimer: ReturnType<typeof setInterval> | null = null;
   about = this.store.me()?.about ?? '';
   pwCurrent = '';
   pwNext = '';
@@ -299,12 +252,7 @@ export class UserSettings {
   avatar = avatarUrl;
 
   close() {
-    this.stopMicTest();
     this.ui.close();
-  }
-
-  ngOnDestroy() {
-    this.stopMicTest();
   }
 
   private patch(body: Record<string, unknown>) {
@@ -372,49 +320,8 @@ export class UserSettings {
       .catch((e) => this.ui.error(e));
   }
 
-  async openVoice() {
+  openVoice() {
     this.section.set('voice');
-    try {
-      // Labels only show up after the user granted microphone access once.
-      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-      s.getTracks().forEach((t) => t.stop());
-    } catch {
-      // no permission: list devices without names
-    }
-    this.devices.set(await navigator.mediaDevices.enumerateDevices());
-  }
-
-  async toggleMicTest() {
-    if (this.testing()) return this.stopMicTest();
-    try {
-      const dev = this.prefs.get('inputDevice');
-      this.testStream = await navigator.mediaDevices.getUserMedia({
-        audio: { deviceId: dev !== 'default' ? { exact: dev } : undefined, echoCancellation: true, noiseSuppression: true },
-      });
-      const ctx = new AudioContext();
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 512;
-      ctx.createMediaStreamSource(this.testStream).connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-      this.testing.set(true);
-      this.testTimer = setInterval(() => {
-        analyser.getByteFrequencyData(data);
-        let sum = 0;
-        for (const v of data) sum += v;
-        this.level.set(Math.min(120, (sum / data.length) * 2.5));
-      }, 60);
-    } catch {
-      this.ui.toast('Não foi possível acessar o microfone.', 'error');
-    }
-  }
-
-  stopMicTest() {
-    this.testStream?.getTracks().forEach((t) => t.stop());
-    this.testStream = null;
-    if (this.testTimer) clearInterval(this.testTimer);
-    this.testTimer = null;
-    this.testing.set(false);
-    this.level.set(0);
   }
 
   saveStream(s: StreamSettings) {

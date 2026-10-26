@@ -12,6 +12,31 @@ export interface StreamSettings {
 
 export const MAX_STREAM: StreamSettings = { resolution: 'source', fps: 60, priority: 'quality', audio: true };
 
+/** Same knobs as Discord's Voice settings. */
+export interface MicSettings {
+  inputVolume: number; // 0–200 %
+  mode: 'vad' | 'ptt';
+  autoSensitivity: boolean;
+  sensitivity: number; // dB, -100..0
+  pttKey: string | null; // KeyboardEvent.code
+  pttRelease: number; // ms
+  noiseSuppression: 'advanced' | 'standard' | 'none';
+  echoCancellation: boolean;
+  autoGain: boolean;
+}
+
+export const DEFAULT_MIC: MicSettings = {
+  inputVolume: 100,
+  mode: 'vad',
+  autoSensitivity: true,
+  sensitivity: -50,
+  pttKey: null,
+  pttRelease: 20,
+  noiseSuppression: 'advanced',
+  echoCancellation: true,
+  autoGain: true,
+};
+
 interface PrefsData {
   notifications: boolean;
   sounds: boolean;
@@ -27,6 +52,8 @@ interface PrefsData {
   theme: string;
   chatFont: number;
   stream: StreamSettings;
+  mic: MicSettings;
+  outputVolume: number; // 0–100 %
 }
 
 const DEFAULTS: PrefsData = {
@@ -44,12 +71,20 @@ const DEFAULTS: PrefsData = {
   theme: 'dark',
   chatFont: 16,
   stream: MAX_STREAM,
+  mic: DEFAULT_MIC,
+  outputVolume: 100,
 };
+
+function load(): PrefsData {
+  const saved = store<Partial<PrefsData>>('prefs', {});
+  // Nested objects get defaults for fields added after they were saved.
+  return { ...DEFAULTS, ...saved, mic: { ...DEFAULT_MIC, ...saved.mic }, stream: { ...MAX_STREAM, ...saved.stream } };
+}
 
 /** Per-device preferences, kept in localStorage. */
 @Injectable({ providedIn: 'root' })
 export class Prefs {
-  readonly data = signal<PrefsData>({ ...DEFAULTS, ...store<Partial<PrefsData>>('prefs', {}) });
+  readonly data = signal<PrefsData>(load());
 
   constructor() {
     effect(() => save('prefs', this.data()));

@@ -16,6 +16,7 @@ Roda inteiro na Cloudflare (mesma stack do AcessosVirtual):
 - Indicador de "digitando", não lidas, contador de menções, notificações na área de trabalho e sons.
 - Amigos (pedidos, aceitar, bloquear), mensagens diretas e grupos de até 10 pessoas.
 - Voz e vídeo por WebRTC: canais de voz, chamadas na DM com toque, câmera, compartilhamento de tela com áudio, indicador de quem está falando, volume por pessoa, escolha de microfone, alto-falante e câmera.
+- Configurações de voz como as do Discord: volume de entrada e saída, teste de microfone (reproduz sua voz), modo **Detecção de voz** (sensibilidade automática ou manual com medidor) ou **Pressione para falar** (atalho e atraso para soltar), **supressão de ruído** Avançada (IA, RNNoise), Padrão (do navegador) ou Nenhuma, cancelamento de eco e controle automático de ganho.
 - Transmissão de tela na qualidade máxima por padrão: resolução da tela até 4K, 60 FPS, sem reduzir a resolução, bitrate alto (~25 Mbps em 4K) e codec com aceleração de hardware quando houver. Dá para mudar em "Transmitir tela" ou em Configurações → Transmissão, inclusive durante a transmissão. Quem assiste vê a resolução recebida (ex.: "AO VIVO 4K").
 - Temas: Claro, Cinza, Escuro, Meia-noite e temas coloridos (Aurora, Pôr do sol, Floresta, Oceano, Lua carmesim, Neon, Algodão-doce), além do tamanho da fonte do chat. Fica em Configurações → Aparência, salvo por dispositivo.
 - Ctrl+K para pular para qualquer canal ou conversa; menus de clique direito em quase tudo; layout para celular; instalável como app (PWA).

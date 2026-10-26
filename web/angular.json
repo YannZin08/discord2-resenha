@@ -47,6 +47,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "{rnnoise/workletProcessor.js,rnnoise.wasm,rnnoise_simd.wasm}",
+                "input": "node_modules/@sapphi-red/web-noise-suppressor/dist",
+                "output": "noise"
               }
             ],
             "styles": [
