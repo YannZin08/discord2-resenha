@@ -110,7 +110,16 @@ export function userMenuItems(
   const items: MenuItem[] = [
     { label: 'Perfil', action: () => anchor && ui.openProfile(userId, guildId, anchor) },
   ];
-  if (userId !== me) {
+  if (userId !== me && user?.bot) {
+    // Bots: only the call volume (e.g. turning the music bot down) and the profile.
+    const inMyCall = Object.values(store.voiceStates()).some((v) => v.userId === userId && v.channelId != null && v.channelId === voice.channelId());
+    if (inMyCall) {
+      items.push({
+        label: 'Volume do usuário',
+        slider: { value: voice.userVolume(userId), min: 0, max: 100, format: (v) => `${v}%`, onInput: (v) => voice.setUserVolume(userId, v) },
+      });
+    }
+  } else if (userId !== me) {
     const openDm = async () => {
       const ch = await api.post<Channel>('/dms', { recipients: [userId] });
       nav.openChannel(null, ch.id);

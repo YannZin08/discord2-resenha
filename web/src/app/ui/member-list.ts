@@ -29,6 +29,9 @@ interface Section {
             <div class="member-text">
               <div class="member-name" [style.color]="color(u.id)">
                 <span>{{ store.nameIn(guildId(), u.id) }}</span>
+                @if (u.bot) {
+                  <span class="bot-tag">BOT</span>
+                }
                 @if (isOwner(u.id)) {
                   <app-icon class="owner-crown" name="crown" [size]="14" appTip="Dono do servidor" />
                 }

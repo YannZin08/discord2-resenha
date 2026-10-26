@@ -4394,6 +4394,97 @@ app-voice-stage {
   flex-shrink: 0;
 }
 
+.bot-tag {
+  display: inline-flex;
+  align-items: center;
+  height: 15px;
+  padding: 0 4px;
+  margin-left: 4px;
+  border-radius: 3px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  vertical-align: middle;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
+}
+/* The music bot's YouTube player stays rendered but hidden behind the app. */
+.music-host {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 200px;
+  height: 200px;
+  z-index: -1;
+  opacity: 0;
+  pointer-events: none;
+}
+.music-host iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.bot-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+}
+.bot-card-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  flex-shrink: 0;
+}
+.bot-card-text {
+  flex: 1;
+  min-width: 0;
+}
+.bot-card-title {
+  font-weight: 700;
+  color: var(--header-primary);
+}
+.bot-card-text p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+.bot-card code,
+.settings-content p code {
+  font-family: var(--font-code);
+  font-size: 85%;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--bg-tertiary);
+}
+.bot-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.bot-row-text {
+  flex: 1;
+  min-width: 0;
+}
+.token-box {
+  margin: 16px 0;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--yellow);
+  background: rgba(240, 178, 50, 0.08);
+}
 .vol-row {
   display: flex;
   align-items: center;

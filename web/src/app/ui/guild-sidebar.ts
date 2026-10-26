@@ -66,6 +66,9 @@ interface Group {
                     <div class="voice-user" (click)="profile($event, v)" (contextmenu)="userMenu($event, v)">
                       <app-avatar [user]="store.users()[v.userId]" [size]="24" [speaking]="voice.speaking().has(v.userId)" />
                       <span class="voice-user-name" [class.speaking]="voice.speaking().has(v.userId)">{{ store.nameIn(g.id, v.userId) }}</span>
+                      @if (v.bot) {
+                        <span class="bot-tag">BOT</span>
+                      }
                       @if (v.stream) {
                         <span class="live-badge">AO VIVO</span>
                       }

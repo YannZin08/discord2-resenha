@@ -132,7 +132,12 @@ export class ContextMenu {
           </div>
           <div class="profile-body">
             <div class="profile-names">
-              <div class="pn-display">{{ store.nameIn(p.guildId, u.id) }}</div>
+              <div class="pn-display">
+                {{ store.nameIn(p.guildId, u.id) }}
+                @if (u.bot) {
+                  <span class="bot-tag">BOT</span>
+                }
+              </div>
               <div class="pn-user">{{ u.username }}</div>
             </div>
             @if (u.customStatus) {

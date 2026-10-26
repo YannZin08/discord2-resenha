@@ -151,6 +151,7 @@ export class Voice {
   private speakTimer: ReturnType<typeof setInterval> | null = null;
   private lastSpoke = new Map<number, number>();
   private streamCodec: string | null = null;
+  private externalSpeakers = new Set<number>();
 
   constructor(
     private store: Store,
@@ -181,7 +182,8 @@ export class Voice {
       untracked(() => {
         if (!active || !channelId || !mySid) return;
         const wanted = new Map<string, number>();
-        for (const v of Object.values(states)) if (v.channelId === channelId && v.sessionId !== mySid) wanted.set(v.sessionId, v.userId);
+        // Bots in the channel (like the music bot) don't take part in the WebRTC call.
+        for (const v of Object.values(states)) if (v.channelId === channelId && v.sessionId !== mySid && !v.bot) wanted.set(v.sessionId, v.userId);
         for (const [sid, uid] of wanted) if (!this.peers.has(sid)) this.createPeer(sid, uid);
         for (const sid of [...this.peers.keys()]) if (!wanted.has(sid)) this.closePeer(sid);
       });
@@ -423,6 +425,17 @@ export class Voice {
     else this.pipe.update(next);
   }
 
+  /** Marks someone as speaking without call audio to analyse, e.g. the music bot while it plays. */
+  setExternalSpeaking(userId: number | null, speaking: boolean) {
+    if (userId == null) return;
+    if (speaking) this.externalSpeakers.add(userId);
+    else this.externalSpeakers.delete(userId);
+  }
+
+  clearExternalSpeaking() {
+    this.externalSpeakers.clear();
+  }
+
   /** Push-to-talk key state, also used by the settings screen's preview. */
   setPtt(down: boolean) {
     if (this.pttDown() === down) return;
@@ -529,6 +542,7 @@ export class Voice {
       for (const p of this.peers.values()) {
         if (p.analyser && this.level(p.analyser) > SPEAK_THRESHOLD) this.lastSpoke.set(p.userId, now);
       }
+      for (const id of this.externalSpeakers) this.lastSpoke.set(id, now);
       const next = new Set<number>();
       for (const [uid, t] of this.lastSpoke) if (now - t < 350) next.add(uid);
       const cur = this.speaking();
@@ -761,6 +775,7 @@ export class Voice {
     if (this.speakTimer) clearInterval(this.speakTimer);
     this.speakTimer = null;
     this.lastSpoke.clear();
+    this.externalSpeakers.clear();
     this.speaking.set(new Set());
     this.active.set(false);
     this.channelId.set(null);

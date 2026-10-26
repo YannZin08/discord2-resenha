@@ -8,6 +8,7 @@ import { Ui } from './core/ui';
 import { Auth } from './ui/auth';
 import { InvitePage } from './ui/invite-page';
 import { EmojiPicker } from './ui/emoji-picker';
+import { MusicPlayer } from './ui/music-player';
 import { CallRing, ContextMenu, Lightbox, ModalHost, ProfilePopout, Toasts } from './ui/overlays';
 import { Logo } from './ui/shared';
 import { Shell } from './ui/shell';
@@ -23,7 +24,7 @@ const TIPS = [
 
 @Component({
   selector: 'app-root',
-  imports: [Auth, InvitePage, Shell, Logo, ContextMenu, ProfilePopout, ModalHost, Toasts, Lightbox, CallRing, EmojiPicker],
+  imports: [Auth, InvitePage, Shell, Logo, ContextMenu, ProfilePopout, ModalHost, Toasts, Lightbox, CallRing, EmojiPicker, MusicPlayer],
   template: `
     @switch (view()) {
       @case ('loading') {
@@ -47,6 +48,7 @@ const TIPS = [
     <app-profile-popout />
     <app-emoji-picker />
     <app-lightbox />
+    <app-music-player />
     <app-call-ring />
     <app-toasts />
   `,

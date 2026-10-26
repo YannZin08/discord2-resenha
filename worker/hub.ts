@@ -1,5 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
+import { HELP, formatTime, parseCommand, resolveTrack, type MusicState, type Track } from './music';
 import { unfurl, type Embed } from './unfurl';
 import {
   HttpError,
@@ -93,7 +94,18 @@ CREATE TABLE IF NOT EXISTS read_states (
   mentions INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, channel_id)
 );
 CREATE INDEX IF NOT EXISTS read_states_channel ON read_states(channel_id);
+CREATE TABLE IF NOT EXISTS bot_tokens (token TEXT PRIMARY KEY, bot_id INTEGER NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS music (guild_id INTEGER PRIMARY KEY, data TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 `;
+
+// Columns added after the first release; ALTER fails harmlessly once they exist.
+const MIGRATIONS = [
+  'ALTER TABLE users ADD COLUMN bot INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE users ADD COLUMN bot_owner INTEGER',
+];
+
+const MUSIC_SID = (gid: number) => `bot:music:${gid}`;
 
 // Everything here survives hibernation: it lives in the WebSocket attachment.
 interface Att {
@@ -147,11 +159,25 @@ export class Hub extends DurableObject<Env> {
   private loginFails = new Map<string, { n: number; until: number }>();
   private routes: Route[] = [];
   private closingSid: string | null = null;
+  /** Active music sessions per guild (also stored in the `music` table). */
+  private music = new Map<number, MusicState>();
+  private musicBotId: number | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
     this.sql.exec(SCHEMA);
+    for (const m of MIGRATIONS) {
+      try {
+        this.sql.exec(m);
+      } catch {
+        // already applied
+      }
+    }
+    for (const row of this.all('SELECT data FROM music')) {
+      const s = JSON.parse(row.data) as MusicState;
+      this.music.set(s.guildId, s);
+    }
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     this.registerRoutes();
   }
@@ -239,6 +265,12 @@ export class Hub extends DurableObject<Env> {
     r('DELETE', '/api/channels/:channelId/pins/:messageId', (c) => this.setPin(c, false));
     r('POST', '/api/channels/:channelId/ack', (c) => this.ack(c));
     r('GET', '/api/search', (c) => this.search(c));
+
+    r('GET', '/api/guilds/:guildId/bots', (c) => this.listBots(c));
+    r('POST', '/api/guilds/:guildId/bots', (c) => this.addBot(c));
+    r('POST', '/api/guilds/:guildId/bots/:botId/token', (c) => this.regenerateBotToken(c));
+    r('DELETE', '/api/guilds/:guildId/bots/:botId', (c) => this.removeBot(c));
+    r('POST', '/api/guilds/:guildId/music', (c) => this.musicAction(c));
   }
 
   async fetch(req: Request): Promise<Response> {
@@ -289,6 +321,12 @@ export class Hub extends DurableObject<Env> {
   }
 
   private sessionUser(req: Request): number | null {
+    // Bots authenticate like Discord bots: "Authorization: Bot <token>".
+    const auth = req.headers.get('authorization')?.match(/^Bot\s+(\S+)$/i);
+    if (auth) {
+      const row = this.one('SELECT bot_id FROM bot_tokens WHERE token = ?', auth[1]);
+      return row ? (row.bot_id as number) : null;
+    }
     const token = parseCookies(req.headers.get('cookie'))[COOKIE];
     if (!token) return null;
     const cached = this.sessions.get(token);
@@ -324,6 +362,7 @@ export class Hub extends DurableObject<Env> {
       about: u.about as string,
       customStatus: u.custom_status as string,
       createdAt: u.created_at as number,
+      bot: !!u.bot,
     };
   }
 
@@ -576,6 +615,8 @@ export class Hub extends DurableObject<Env> {
   }
 
   private presence(uid: number, forSelf = false, row?: Row): string {
+    // The built-in music bot lives in the server itself, so it is always online.
+    if (uid === this.musicBot(false)) return 'online';
     const socks = this.live(String(uid));
     if (!socks.length) return 'offline';
     const pref = (row ?? this.one('SELECT status FROM users WHERE id = ?', uid))?.status ?? 'online';
@@ -594,13 +635,33 @@ export class Hub extends DurableObject<Env> {
     this.broadcast([uid], 'PRESENCE_UPDATE', { userId: uid, status: this.presence(uid, true) });
   }
 
-  private voiceStates(filter: (v: VoiceAtt) => boolean) {
+  private voiceStates(filter: (v: VoiceAtt) => boolean, withBots = true) {
     const out = [];
     for (const ws of this.live()) {
       const att = this.attOf(ws);
       if (att?.voice && filter(att.voice)) out.push(this.voiceState(att, att.voice));
     }
+    if (withBots) {
+      for (const m of this.music.values()) {
+        const v: VoiceAtt = { channelId: m.voiceChannelId, guildId: m.guildId, mute: false, deaf: true, video: false, stream: false };
+        if (filter(v)) out.push(this.musicVoiceState(m.guildId, m.voiceChannelId));
+      }
+    }
     return out;
+  }
+
+  private musicVoiceState(gid: number, channelId: number | null) {
+    return {
+      userId: this.musicBot(),
+      sessionId: MUSIC_SID(gid),
+      channelId,
+      guildId: gid,
+      mute: false,
+      deaf: true,
+      video: false,
+      stream: false,
+      bot: true,
+    };
   }
 
   private voiceState(att: Att, v: VoiceAtt | null) {
@@ -620,6 +681,7 @@ export class Hub extends DurableObject<Env> {
     const ch = this.one('SELECT * FROM channels WHERE id = ?', prev.channelId);
     const aud = ch ? this.audience(ch) : [att.uid];
     this.broadcast(aud, 'VOICE_STATE_UPDATE', { ...this.voiceState(att, null), guildId: prev.guildId, leftChannelId: prev.channelId });
+    this.checkMusicListeners(prev.channelId);
   }
 
   /** Drops voice connections matching `match`, e.g. everyone in a deleted channel. */
@@ -683,6 +745,7 @@ export class Hub extends DurableObject<Env> {
       })),
       presences,
       voiceStates: this.voiceStates((v) => (v.guildId != null ? guildSet.has(v.guildId) : allDmIds.has(v.channelId))),
+      music: guildIds.map((g) => this.musicPayload(g)).filter((m) => m.track),
     };
   }
 
@@ -696,6 +759,7 @@ export class Hub extends DurableObject<Env> {
       users: users.map((u) => this.pub(u)),
       presences,
       voiceStates: this.voiceStates((v) => v.guildId === gid),
+      music: this.musicPayload(gid),
     });
   }
 
@@ -851,7 +915,7 @@ export class Hub extends DurableObject<Env> {
       throw new HttpError(429, 'Muitas tentativas. Tente de novo em alguns minutos.');
     }
     const u = this.one('SELECT * FROM users WHERE username = ?', username);
-    if (!u || !(await verifyPassword(password, u.pass_salt, u.pass_hash))) {
+    if (!u || u.bot || !(await verifyPassword(password, u.pass_salt, u.pass_hash))) {
       const n = fails && fails.until > Date.now() ? fails.n + 1 : 1;
       this.loginFails.set(username, { n, until: Date.now() + 15 * 60_000 });
       throw new HttpError(401, 'Usuário ou senha incorretos.');
@@ -1274,6 +1338,8 @@ export class Hub extends DurableObject<Env> {
     if (g.owner_id !== c.uid) throw new HttpError(403, 'Só o dono pode excluir o servidor.');
     const members = this.guildMembers(gid);
     this.disconnectVoice((_, v) => v.guildId === gid);
+    this.music.delete(gid);
+    this.run('DELETE FROM music WHERE guild_id = ?', gid);
     this.tx(() => {
       this.purgeChannelMessages(this.all('SELECT id FROM channels WHERE guild_id = ?', gid).map((r) => r.id));
       for (const t of ['channels', 'members', 'member_roles', 'roles', 'invites', 'bans']) this.run(`DELETE FROM ${t} WHERE guild_id = ?`, gid);
@@ -1296,6 +1362,7 @@ export class Hub extends DurableObject<Env> {
   }
 
   private removeMember(gid: number, uid: number) {
+    if (uid === this.musicBot(false)) this.stopMusic(gid);
     this.disconnectVoice((a, v) => a.uid === uid && v.guildId === gid);
     this.tx(() => {
       this.run('DELETE FROM members WHERE guild_id = ? AND user_id = ?', gid, uid);
@@ -1663,7 +1730,7 @@ export class Hub extends DurableObject<Env> {
   private createMessage(
     ch: Row,
     authorId: number,
-    opts: { type?: string; content?: string; replyTo?: number | null; attachments?: Attachment[]; nonce?: unknown },
+    opts: { type?: string; content?: string; replyTo?: number | null; attachments?: Attachment[]; nonce?: unknown; embeds?: Embed[] },
   ) {
     const type = opts.type ?? 'default';
     const content = opts.content ?? '';
@@ -1684,8 +1751,8 @@ export class Hub extends DurableObject<Env> {
     const hiddenFor: number[] = [];
     this.tx(() => {
       this.run(
-        `INSERT INTO messages (id, channel_id, author_id, type, content, reply_to, mentions, mention_everyone, attachments)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO messages (id, channel_id, author_id, type, content, reply_to, mentions, mention_everyone, attachments, embeds)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         ch.id,
         authorId,
@@ -1695,6 +1762,7 @@ export class Hub extends DurableObject<Env> {
         JSON.stringify([...mentions]),
         everyone ? 1 : 0,
         JSON.stringify(opts.attachments ?? []),
+        JSON.stringify(opts.embeds ?? []),
       );
       this.run('UPDATE channels SET last_message_id = ? WHERE id = ?', id, ch.id);
       this.upsertRead(authorId, ch.id, id);
@@ -1719,7 +1787,7 @@ export class Hub extends DurableObject<Env> {
     for (const uid of hiddenFor) this.channelCreateFor(uid, fresh);
     const msg = this.message(id)!;
     this.broadcast(audience, 'MESSAGE_CREATE', { ...msg, nonce: opts.nonce ?? null });
-    this.scheduleUnfurl(id, content);
+    if (!opts.embeds) this.scheduleUnfurl(id, content);
     return msg;
   }
 
@@ -1779,12 +1847,299 @@ export class Hub extends DurableObject<Env> {
       return { key: up.key, name: up.name, size: up.size, mime: up.mime, width: dim(a.width), height: dim(a.height) };
     });
     if (!content && !attachments.length) throw new HttpError(400, 'A mensagem está vazia.');
-    return this.createMessage(ch, c.uid, {
+    const msg = this.createMessage(ch, c.uid, {
       content,
       attachments,
       replyTo: b.replyTo != null ? toId(b.replyTo) : null,
       nonce: typeof b.nonce === 'string' ? b.nonce.slice(0, 64) : null,
     });
+    const command = ch.guild_id != null ? parseCommand(content) : null;
+    const botId = this.musicBot(false);
+    if (command && botId && c.uid !== botId && this.isMember(ch.guild_id, botId)) {
+      this.ctx.waitUntil(this.musicCommand(ch, c.uid, command).catch((e) => console.error('music command failed', e)));
+    }
+    return msg;
+  }
+
+  // ---------------------------------------------------------------- bots
+
+  /** The built-in music bot's user id, created on first use. */
+  private musicBot(create = true): number {
+    if (this.musicBotId) return this.musicBotId;
+    const row = this.one("SELECT value FROM meta WHERE key = 'music_bot'");
+    if (row) return (this.musicBotId = Number(row.value));
+    if (!create) return 0;
+    const id = newId();
+    const taken = this.one("SELECT 1 FROM users WHERE username = 'musica'");
+    this.run(
+      `INSERT INTO users (id, username, display_name, pass_hash, pass_salt, banner_color, about, created_at, bot)
+       VALUES (?, ?, 'Música', '!', '!', '#5865f2', ?, ?, 1)`,
+      id,
+      taken ? `musica.${id % 10000}` : 'musica',
+      'Bot de música do Resenha. Entre num canal de voz e digite /tocar seguido do link ou do nome da música.',
+      Date.now(),
+    );
+    this.run("INSERT INTO meta (key, value) VALUES ('music_bot', ?)", String(id));
+    return (this.musicBotId = id);
+  }
+
+  private botInfo(gid: number, u: Row) {
+    return { user: this.pub(u), builtin: u.id === this.musicBot(false), ownerId: u.bot_owner ?? null };
+  }
+
+  private listBots(c: Ctx) {
+    const gid = toId(c.params.guildId);
+    this.adminGuild(c.uid, gid);
+    return this.all('SELECT u.* FROM users u JOIN members m ON m.user_id = u.id WHERE m.guild_id = ? AND u.bot = 1 ORDER BY u.created_at', gid).map((u) =>
+      this.botInfo(gid, u),
+    );
+  }
+
+  private addBotMember(gid: number, botId: number) {
+    if (this.isMember(gid, botId)) return;
+    const others = this.guildMembers(gid);
+    this.run('INSERT INTO members (guild_id, user_id, joined_at) VALUES (?, ?, ?)', gid, botId, Date.now());
+    const u = this.one('SELECT * FROM users WHERE id = ?', botId)!;
+    this.broadcast(others, 'GUILD_MEMBER_ADD', { member: this.member(gid, botId), user: this.pub(u), status: this.presence(botId, false, u) });
+  }
+
+  private async addBot(c: Ctx) {
+    const gid = toId(c.params.guildId);
+    this.adminGuild(c.uid, gid);
+    const b = await c.body();
+    if (b.type === 'music') {
+      const id = this.musicBot();
+      this.addBotMember(gid, id);
+      return this.botInfo(gid, this.one('SELECT * FROM users WHERE id = ?', id)!);
+    }
+    const name = str(b.name, 'Nome do bot', 2, 32);
+    const id = newId();
+    const base = name.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9_.]+/g, '').slice(0, 20) || 'bot';
+    this.run(
+      `INSERT INTO users (id, username, display_name, pass_hash, pass_salt, created_at, bot, bot_owner)
+       VALUES (?, ?, ?, '!', '!', ?, 1, ?)`,
+      id,
+      `${base}.bot${id % 10000}`,
+      name,
+      Date.now(),
+      c.uid,
+    );
+    this.addBotMember(gid, id);
+    const token = this.newBotToken(id);
+    return { ...this.botInfo(gid, this.one('SELECT * FROM users WHERE id = ?', id)!), token };
+  }
+
+  private newBotToken(botId: number): string {
+    const token = `rb.${randomToken(32)}`;
+    this.run('DELETE FROM bot_tokens WHERE bot_id = ?', botId);
+    this.run('INSERT INTO bot_tokens (token, bot_id, created_at) VALUES (?, ?, ?)', token, botId, Date.now());
+    // Close connections that used the old token.
+    for (const ws of this.live(String(botId))) {
+      try {
+        ws.close(4001, 'token regenerated');
+      } catch {
+        // already closed
+      }
+    }
+    return token;
+  }
+
+  private customBotIn(c: Ctx): { gid: number; bot: Row } {
+    const gid = toId(c.params.guildId);
+    this.adminGuild(c.uid, gid);
+    const bot = this.one('SELECT * FROM users WHERE id = ? AND bot = 1', toId(c.params.botId));
+    if (!bot || !this.isMember(gid, bot.id)) throw new HttpError(404, 'Bot não encontrado neste servidor.');
+    return { gid, bot };
+  }
+
+  private regenerateBotToken(c: Ctx) {
+    const { bot } = this.customBotIn(c);
+    if (bot.id === this.musicBot(false)) throw new HttpError(400, 'O bot de música não usa token.');
+    return { token: this.newBotToken(bot.id) };
+  }
+
+  private removeBot(c: Ctx) {
+    const { gid, bot } = this.customBotIn(c);
+    this.removeMember(gid, bot.id);
+    return { ok: true };
+  }
+
+  // ---------------------------------------------------------------- music bot
+
+  private musicPayload(gid: number) {
+    const m = this.music.get(gid);
+    const now = Date.now();
+    if (!m) return { guildId: gid, track: null };
+    return {
+      guildId: gid,
+      voiceChannelId: m.voiceChannelId,
+      textChannelId: m.textChannelId,
+      track: m.queue[m.index] ?? null,
+      index: m.index,
+      upNext: m.queue.slice(m.index + 1),
+      position: ((m.pausedAt ?? now) - m.startedAt) / 1000,
+      paused: m.pausedAt != null,
+      serverTime: now,
+    };
+  }
+
+  private saveMusic(gid: number) {
+    const m = this.music.get(gid);
+    if (m) this.run('INSERT INTO music (guild_id, data) VALUES (?, ?) ON CONFLICT DO UPDATE SET data = excluded.data', gid, JSON.stringify(m));
+    else this.run('DELETE FROM music WHERE guild_id = ?', gid);
+    this.broadcast(this.guildMembers(gid), 'MUSIC_STATE', this.musicPayload(gid));
+  }
+
+  private musicSay(channelId: number, content: string, track?: Track) {
+    const ch = this.one('SELECT * FROM channels WHERE id = ?', channelId);
+    if (!ch) return;
+    const embeds: Embed[] = track
+      ? [{ url: track.url, type: 'link', title: track.title, siteName: track.author ? `YouTube · ${track.author}` : 'YouTube', image: track.thumbnail, color: '#ff0033' }]
+      : [];
+    this.createMessage(ch, this.musicBot(), { content, embeds });
+  }
+
+  private voiceChannelOf(uid: number, gid: number): number | null {
+    for (const ws of this.live(String(uid))) {
+      const v = this.attOf(ws)?.voice;
+      if (v?.guildId === gid) return v.channelId;
+    }
+    return null;
+  }
+
+  private startTrack(m: MusicState, index: number) {
+    m.index = index;
+    m.startedAt = Date.now() + 1500; // give players a moment to load
+    m.pausedAt = null;
+  }
+
+  private stopMusic(gid: number, message?: string) {
+    const m = this.music.get(gid);
+    if (!m) return;
+    this.music.delete(gid);
+    this.broadcast(this.guildMembers(gid), 'VOICE_STATE_UPDATE', { ...this.musicVoiceState(gid, null), leftChannelId: m.voiceChannelId });
+    this.saveMusic(gid);
+    if (message) this.musicSay(m.textChannelId, message);
+  }
+
+  /** The bot leaves when the last person leaves its voice channel. */
+  private checkMusicListeners(channelId: number) {
+    for (const m of this.music.values()) {
+      if (m.voiceChannelId !== channelId) continue;
+      const humans = this.voiceStates((v) => v.channelId === channelId, false).length;
+      if (!humans) this.stopMusic(m.guildId, 'Todo mundo saiu do canal de voz, então parei a música. 👋');
+    }
+  }
+
+  private advance(gid: number, by: string | null) {
+    const m = this.music.get(gid);
+    if (!m) return;
+    if (m.index + 1 >= m.queue.length) {
+      this.stopMusic(gid, by ? `⏹️ ${by} pulou a última música. A fila acabou.` : 'A fila acabou. Até a próxima! 🎶');
+      return;
+    }
+    this.startTrack(m, m.index + 1);
+    const t = m.queue[m.index];
+    this.saveMusic(gid);
+    this.musicSay(m.textChannelId, `${by ? `⏭️ ${by} pulou. ` : ''}🎵 Tocando agora: **${t.title}** · pedido por <@${t.requestedBy}>`, t);
+  }
+
+  private async musicCommand(ch: Row, uid: number, command: ReturnType<typeof parseCommand> & object) {
+    const gid = ch.guild_id as number;
+    const name = this.one('SELECT display_name FROM users WHERE id = ?', uid)?.display_name ?? 'Alguém';
+    const m = this.music.get(gid);
+    const say = (text: string, track?: Track) => this.musicSay(ch.id, text, track);
+    const voice = this.voiceChannelOf(uid, gid);
+
+    if (command.cmd === 'help') return say(HELP);
+    if (command.cmd === 'queue') {
+      if (!m) return say('Não tem nada tocando. Use `/tocar <link ou nome>`.');
+      const lines = m.queue.slice(m.index, m.index + 11).map((t, i) => (i === 0 ? `▶️ **${t.title}**` : `${i}. ${t.title}`));
+      const more = m.queue.length - m.index - 11;
+      return say(`**Fila de músicas**\n${lines.join('\n')}${more > 0 ? `\n… e mais ${more}` : ''}`);
+    }
+    if (command.cmd === 'now') {
+      if (!m) return say('Não tem nada tocando.');
+      const t = m.queue[m.index];
+      const pos = ((m.pausedAt ?? Date.now()) - m.startedAt) / 1000;
+      return say(`${m.pausedAt ? '⏸️ Pausado' : '🎵 Tocando agora'}: **${t.title}** · ${formatTime(pos)}`, t);
+    }
+
+    if (command.cmd === 'play') {
+      if (!command.query) return say('Diga o que tocar: `/tocar <link do YouTube ou nome da música>`.');
+      if (!voice) return say(`<@${uid}>, entre em um canal de voz primeiro e depois peça a música.`);
+      if (m && m.voiceChannelId !== voice) return say(`Já estou tocando em outro canal de voz. Entre lá ou use \`/parar\` primeiro.`);
+      const track = await resolveTrack(command.query, uid);
+      if ('error' in track) return say(`❌ ${track.error}`);
+      const cur = this.music.get(gid);
+      if (cur) {
+        cur.queue.push(track);
+        this.saveMusic(gid);
+        return say(`➕ Adicionada à fila (posição ${cur.queue.length - cur.index - 1}): **${track.title}**`, track);
+      }
+      const state: MusicState = { guildId: gid, voiceChannelId: voice, textChannelId: ch.id, queue: [track], index: 0, startedAt: 0, pausedAt: null };
+      this.startTrack(state, 0);
+      this.music.set(gid, state);
+      this.broadcast(this.guildMembers(gid), 'VOICE_STATE_UPDATE', this.musicVoiceState(gid, voice));
+      this.saveMusic(gid);
+      return say(`🎵 Tocando agora: **${track.title}** · pedido por <@${uid}>`, track);
+    }
+
+    if (!m) return say('Não tem nada tocando.');
+    if (voice !== m.voiceChannelId) return say(`<@${uid}>, entre no canal de voz onde estou tocando para controlar a música.`);
+    this.musicControl(gid, command.cmd, name);
+  }
+
+  /** Shared by chat commands and the player buttons. */
+  private musicControl(gid: number, action: string, by: string, index?: number) {
+    const m = this.music.get(gid);
+    if (!m) return;
+    const now = Date.now();
+    switch (action) {
+      case 'skip':
+        return this.advance(gid, by);
+      case 'pause':
+        if (m.pausedAt == null) {
+          m.pausedAt = now;
+          this.saveMusic(gid);
+          this.musicSay(m.textChannelId, `⏸️ ${by} pausou a música.`);
+        }
+        return;
+      case 'resume':
+        if (m.pausedAt != null) {
+          m.startedAt += now - m.pausedAt;
+          m.pausedAt = null;
+          this.saveMusic(gid);
+          this.musicSay(m.textChannelId, `▶️ ${by} voltou a tocar.`);
+        }
+        return;
+      case 'stop':
+        return this.stopMusic(gid, `⏹️ ${by} parou a música.`);
+      case 'ended':
+        // Every listener reports the end; only the first one for this track counts.
+        if (index === m.index) this.advance(gid, null);
+        return;
+      case 'error':
+        if (index === m.index) {
+          this.musicSay(m.textChannelId, `❌ Não consegui tocar **${m.queue[m.index].title}** (o dono bloqueou fora do YouTube). Pulando.`);
+          this.advance(gid, null);
+        }
+        return;
+    }
+  }
+
+  private async musicAction(c: Ctx) {
+    const gid = toId(c.params.guildId);
+    this.guildFor(c.uid, gid);
+    const b = await c.body();
+    const m = this.music.get(gid);
+    if (!m) throw new HttpError(400, 'Não tem nada tocando.');
+    const action = String(b.action);
+    if (!['skip', 'pause', 'resume', 'stop', 'ended', 'error'].includes(action)) throw new HttpError(400, 'Ação inválida.');
+    if (this.voiceChannelOf(c.uid, gid) !== m.voiceChannelId) throw new HttpError(403, 'Entre no canal de voz da música para controlá-la.');
+    const name = this.one('SELECT display_name FROM users WHERE id = ?', c.uid)?.display_name ?? 'Alguém';
+    this.musicControl(gid, action, name, typeof b.index === 'number' ? b.index : undefined);
+    return this.musicPayload(gid);
   }
 
   private messageIn(ch: Row, messageId: number): Row {

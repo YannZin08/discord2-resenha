@@ -54,6 +54,7 @@ interface PrefsData {
   stream: StreamSettings;
   mic: MicSettings;
   outputVolume: number; // 0–100 %
+  musicVolume: number; // 0–100, the music bot player on this device
 }
 
 const DEFAULTS: PrefsData = {
@@ -73,6 +74,7 @@ const DEFAULTS: PrefsData = {
   stream: MAX_STREAM,
   mic: DEFAULT_MIC,
   outputVolume: 100,
+  musicVolume: 50,
 };
 
 function load(): PrefsData {

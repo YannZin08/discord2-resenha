@@ -15,6 +15,17 @@ import { Tip } from './tooltip';
 
 const MAX = 4000;
 
+const MUSIC_COMMANDS = [
+  { name: 'tocar', arg: '<link ou nome>', description: 'Toca do YouTube ou põe na fila' },
+  { name: 'pular', description: 'Pula para a próxima música' },
+  { name: 'pausar', description: 'Pausa a música' },
+  { name: 'continuar', description: 'Volta a tocar' },
+  { name: 'fila', description: 'Mostra a fila' },
+  { name: 'tocando', description: 'Mostra o que está tocando' },
+  { name: 'parar', description: 'Para e tira o bot do canal' },
+  { name: 'ajuda', description: 'Lista os comandos' },
+];
+
 interface Suggestion {
   key: string;
   label: string;
@@ -126,6 +137,17 @@ export class Composer {
   private acRange: [number, number] | null = null;
   private lastTyping = 0;
 
+  /** The built-in music bot is a member of this server. */
+  readonly hasMusicBot = computed(() => {
+    const gid = this.channel().guildId;
+    if (gid == null) return false;
+    const users = this.store.users();
+    return Object.keys(this.store.members()[gid] ?? {}).some((id) => {
+      const u = users[+id];
+      return u?.bot && u.username.startsWith('musica');
+    });
+  });
+
   readonly blocked = computed(() => {
     const p = this.store.dmPartner(this.channel());
     return p ? this.store.relationships()[p.id] === 'blocked' : false;
@@ -213,6 +235,22 @@ export class Composer {
     if (!el) return;
     const caret = el.selectionStart ?? this.text().length;
     const before = this.text().slice(0, caret);
+    const slash = before.match(/^\/([\p{L}]*)$/u);
+    if (slash && this.hasMusicBot()) {
+      const q = slash[1].toLowerCase();
+      const list = MUSIC_COMMANDS.filter((c) => c.name.startsWith(q)).map((c) => ({
+        key: 'cmd' + c.name,
+        label: '/' + c.name + (c.arg ? ` ${c.arg}` : ''),
+        sub: c.description,
+        insert: '/' + c.name + ' ',
+        icon: 'speaker',
+      }));
+      this.acRange = [0, caret];
+      this.acTitle.set('Comandos do bot de música');
+      this.suggestions.set(list);
+      this.acIndex.set(0);
+      return;
+    }
     const m = before.match(/(?:^|\s)([@#:])([^\s@#:]{0,32})$/u);
     if (!m) {
       this.suggestions.set([]);

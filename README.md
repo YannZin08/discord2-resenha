@@ -21,6 +21,19 @@ Roda inteiro na Cloudflare (mesma stack do AcessosVirtual):
 - Temas: Claro, Cinza, Escuro, Meia-noite e temas coloridos (Aurora, Pôr do sol, Floresta, Oceano, Lua carmesim, Neon, Algodão-doce), além do tamanho da fonte do chat. Fica em Configurações → Aparência, salvo por dispositivo.
 - Ctrl+K para pular para qualquer canal ou conversa; menus de clique direito em quase tudo; layout para celular; instalável como app (PWA).
 
+## Bots
+
+Em Configurações do servidor → **Bots**:
+
+- **Música** (embutido): entre num canal de voz e digite `/tocar <link do YouTube ou nome da música>`. Também tem `/pular`, `/pausar`, `/continuar`, `/fila`, `/tocando`, `/parar` e `/ajuda` (com `/` ou `!`). Quem está no canal vê um mini-player com a música sincronizada pelo relógio do servidor, usando o player oficial do YouTube; o bot sai sozinho quando todo mundo sai do canal.
+- **Bots personalizados**: "Criar bot" gera um token. Seu programa usa o cabeçalho `Authorization: Bot <token>` na API REST (`/api/...`, as mesmas rotas do app) e no gateway (`wss://.../api/gateway`, eventos como `MESSAGE_CREATE`). Exemplo pronto, sem dependências:
+
+```bash
+RESENHA_TOKEN=rb.xxxxx node examples/bot-exemplo.mjs
+```
+
+Bots do Discord não funcionam aqui: eles usam a API do Discord.
+
 ## Rodar localmente
 
 ```bash

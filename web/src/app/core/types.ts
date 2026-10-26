@@ -13,6 +13,38 @@ export interface User {
   customStatus: string;
   createdAt: number;
   status?: StatusPref;
+  bot?: boolean;
+}
+
+export interface Track {
+  videoId: string;
+  url: string;
+  title: string;
+  author: string;
+  thumbnail: string;
+  requestedBy: number;
+}
+
+/** What the built-in music bot is playing in a server (synced by the server clock). */
+export interface MusicState {
+  guildId: number;
+  voiceChannelId?: number;
+  textChannelId?: number;
+  track: Track | null;
+  index?: number;
+  upNext?: Track[];
+  position?: number;
+  paused?: boolean;
+  serverTime?: number;
+  /** client-only: Date.now() when this state arrived */
+  receivedAt?: number;
+}
+
+export interface BotInfo {
+  user: User;
+  builtin: boolean;
+  ownerId: number | null;
+  token?: string;
 }
 
 export interface Guild {
@@ -133,6 +165,7 @@ export interface VoiceState {
   video: boolean;
   stream: boolean;
   leftChannelId?: number;
+  bot?: boolean;
 }
 
 export interface ReadState {
@@ -157,6 +190,7 @@ export interface Ready {
   readStates: ReadState[];
   presences: Record<number, Status>;
   voiceStates: VoiceState[];
+  music?: MusicState[];
 }
 
 export interface InviteInfo {

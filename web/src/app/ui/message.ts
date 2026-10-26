@@ -142,6 +142,9 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
           </div>
           <h3 class="msg-header">
             <span class="msg-author" [style.color]="authorColor()" (click)="profile($event)" (contextmenu)="authorMenu($event)">{{ authorName() }}</span>
+            @if (m.author?.bot) {
+              <span class="bot-tag">BOT</span>
+            }
             <span class="msg-time" [appTip]="fullTime()">{{ timestamp() }}</span>
           </h3>
         } @else {

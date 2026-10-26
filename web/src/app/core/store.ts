@@ -6,6 +6,7 @@ import type {
   GuildPayload,
   Member,
   Message,
+  MusicState,
   ReadState,
   Ready,
   RelType,
@@ -44,6 +45,8 @@ export class Store {
   readonly voiceStates = signal<Record<string, VoiceState>>({});
   readonly typing = signal<Record<number, Record<number, number>>>({});
   readonly pinsVersion = signal<Record<number, number>>({});
+  /** Music bot state per guild. */
+  readonly music = signal<Record<number, MusicState>>({});
 
   private lists = new Map<number, WritableSignal<MessageList>>();
   private listeners = new Map<string, Set<Listener>>();
@@ -132,6 +135,7 @@ export class Store {
     this.relationships.set(Object.fromEntries(r.relationships.map((x) => [x.userId, x.type])));
     this.readStates.set(Object.fromEntries(r.readStates.map((x) => [x.channelId, x])));
     this.voiceStates.set(Object.fromEntries(r.voiceStates.map((v) => [v.sessionId, v])));
+    this.music.set(Object.fromEntries((r.music ?? []).map((m) => [m.guildId, { ...m, receivedAt: Date.now() }])));
     // History may have moved on while we were disconnected.
     for (const [id, list] of this.lists) {
       if (!channels[id]) this.lists.delete(id);
@@ -196,6 +200,10 @@ export class Store {
           for (const v of d.voiceStates as VoiceState[]) next[v.sessionId] = v;
           return next;
         });
+        if (d.music) this.setMusic(d.music);
+        break;
+      case 'MUSIC_STATE':
+        this.setMusic(d);
         break;
       case 'GUILD_UPDATE':
         this.guilds.update((all) => (all[d.id] ? { ...all, [d.id]: { ...all[d.id], ...d } } : all));
@@ -319,6 +327,15 @@ export class Store {
         break;
     }
     this.emit(t, d);
+  }
+
+  private setMusic(m: MusicState) {
+    this.music.update((all) => {
+      const next = { ...all };
+      if (m.track) next[m.guildId] = { ...m, receivedAt: Date.now() };
+      else delete next[m.guildId];
+      return next;
+    });
   }
 
   private setMember(m: Member) {

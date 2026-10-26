@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { Api } from '../../core/api';
 import { Nav } from '../../core/nav';
 import { Store } from '../../core/store';
-import type { Role, User } from '../../core/types';
+import type { BotInfo, Role, User } from '../../core/types';
 import { Ui } from '../../core/ui';
 import { Voice } from '../../core/voice';
 import { fileUrl, formatLongDate } from '../../core/util';
@@ -12,7 +12,7 @@ import { Avatar, GuildIcon, Icon } from '../shared';
 import { confirmDialog, promptDialog } from './dialogs';
 import { pickImage, squareImage } from './image';
 
-type Section = 'overview' | 'roles' | 'members' | 'invites' | 'bans';
+type Section = 'overview' | 'roles' | 'bots' | 'members' | 'invites' | 'bans';
 
 const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1c40f', '#e67e22', '#e74c3c', '#95a5a6', '#607d8b', '#11806a', '#1f8b4c', '#206694', '#71368a', '#ad1457', '#c27c0e', '#a84300', '#992d22'];
 
@@ -27,6 +27,7 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
             <h3>{{ g.name }}</h3>
             <button [class.active]="section() === 'overview'" (click)="section.set('overview')">Visão geral</button>
             <button [class.active]="section() === 'roles'" (click)="section.set('roles')">Cargos</button>
+            <button [class.active]="section() === 'bots'" (click)="openBots()">Bots</button>
             <h3>Gestão de membros</h3>
             <button [class.active]="section() === 'members'" (click)="section.set('members')">Membros</button>
             <button [class.active]="section() === 'invites'" (click)="openInvites()">Convites</button>
@@ -127,6 +128,63 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
                     </div>
                   }
                 </div>
+              }
+              @case ('bots') {
+                <h2>Bots</h2>
+                <p class="hint">Bots são membros automáticos do servidor. Use o bot de música pronto ou crie os seus.</p>
+                <div class="bot-card">
+                  <div class="bot-card-icon">🎵</div>
+                  <div class="bot-card-text">
+                    <div class="bot-card-title">Música <span class="bot-tag">BOT</span></div>
+                    <p>
+                      Toca músicas do YouTube no canal de voz, sincronizadas para todo mundo da call. Entre num canal de voz e digite
+                      <code>/tocar</code> com o link ou o nome da música. Também tem <code>/pular</code>, <code>/pausar</code>,
+                      <code>/continuar</code>, <code>/fila</code> e <code>/parar</code>.
+                    </p>
+                  </div>
+                  @if (musicBot()) {
+                    <button class="btn btn-danger-outline" (click)="removeBot(musicBot()!)">Remover</button>
+                  } @else {
+                    <button class="btn btn-brand" (click)="addMusicBot()">Adicionar ao servidor</button>
+                  }
+                </div>
+
+                <div class="settings-divider"></div>
+                <h3 class="settings-h3">Bots personalizados</h3>
+                <p class="hint">
+                  Crie um bot e use o token dele no seu próprio programa (Node, Python...) para ler e mandar mensagens, como no portal de
+                  desenvolvedores do Discord. Há um exemplo pronto em <code>examples/bot-exemplo.mjs</code> no projeto.
+                </p>
+                <div class="settings-actions">
+                  <button class="btn btn-brand" (click)="createBot()">Criar bot</button>
+                </div>
+                @if (newToken(); as t) {
+                  <div class="token-box">
+                    <div class="toggle-title">Token de {{ t.name }}</div>
+                    <p class="hint">Copie agora: ele não aparece de novo. Quem tiver o token controla o bot, então não compartilhe.</p>
+                    <div class="copy-box">
+                      <input readonly [value]="t.token" (focus)="$any($event.target).select()" />
+                      <button class="btn btn-brand" (click)="copyToken(t.token)">Copiar</button>
+                    </div>
+                    <p class="hint">
+                      Conecte com o cabeçalho <code>Authorization: Bot &lt;token&gt;</code> em <code>{{ origin }}/api</code> (REST) e
+                      <code>{{ wsOrigin }}/api/gateway</code> (eventos em tempo real).
+                    </p>
+                  </div>
+                }
+                @for (b of customBots(); track b.user.id) {
+                  <div class="bot-row">
+                    <app-avatar [user]="b.user" [size]="32" />
+                    <div class="bot-row-text">
+                      <div class="mt-display">{{ b.user.displayName }} <span class="bot-tag">BOT</span></div>
+                      <div class="mt-user">{{ b.user.username }}</div>
+                    </div>
+                    <button class="btn btn-secondary small" (click)="regenerate(b)">Gerar novo token</button>
+                    <button class="btn btn-danger-outline small" (click)="removeBot(b)">Remover</button>
+                  </div>
+                } @empty {
+                  <p class="hint">Nenhum bot personalizado ainda.</p>
+                }
               }
               @case ('members') {
                 <h2>Membros do servidor</h2>
@@ -330,6 +388,80 @@ export class GuildSettings {
   memberMenu(e: MouseEvent, u: User) {
     const el = e.currentTarget as Element;
     this.ui.openMenu(e, userMenuItems(u.id, this.guildId(), { store: this.store, ui: this.ui, api: this.api, nav: this.nav, voice: this.voice }, el));
+  }
+
+  readonly bots = signal<BotInfo[]>([]);
+  readonly newToken = signal<{ name: string; token: string } | null>(null);
+  readonly musicBot = computed(() => this.bots().find((b) => b.builtin) ?? null);
+  readonly customBots = computed(() => this.bots().filter((b) => !b.builtin));
+  readonly origin = location.origin;
+  readonly wsOrigin = location.origin.replace(/^http/, 'ws');
+
+  openBots() {
+    this.section.set('bots');
+    void this.loadBots();
+  }
+
+  private async loadBots() {
+    try {
+      this.bots.set(await this.api.get<BotInfo[]>(`/guilds/${this.guildId()}/bots`));
+    } catch (e) {
+      this.ui.error(e);
+    }
+  }
+
+  async addMusicBot() {
+    try {
+      await this.api.post(`/guilds/${this.guildId()}/bots`, { type: 'music' });
+      await this.loadBots();
+      this.ui.toast('Bot de música adicionado. Entre num canal de voz e digite /tocar.', 'success');
+    } catch (e) {
+      this.ui.error(e);
+    }
+  }
+
+  createBot() {
+    promptDialog(this.ui, { title: 'Criar bot', label: 'Nome do bot', placeholder: 'Ex.: Robozinho', confirmText: 'Criar', maxLength: 32 }, async (name) => {
+      const bot = await this.api.post<BotInfo>(`/guilds/${this.guildId()}/bots`, { name });
+      this.newToken.set({ name: bot.user.displayName, token: bot.token! });
+      await this.loadBots();
+    });
+  }
+
+  async regenerate(b: BotInfo) {
+    const ok = await confirmDialog(this.ui, {
+      title: 'Gerar novo token',
+      body: `O token atual de ${b.user.displayName} para de funcionar e o bot é desconectado até você usar o novo.`,
+      confirmText: 'Gerar novo token',
+    });
+    if (!ok) return;
+    try {
+      const r = await this.api.post<{ token: string }>(`/guilds/${this.guildId()}/bots/${b.user.id}/token`);
+      this.newToken.set({ name: b.user.displayName, token: r.token });
+    } catch (e) {
+      this.ui.error(e);
+    }
+  }
+
+  async removeBot(b: BotInfo) {
+    const ok = await confirmDialog(this.ui, {
+      title: `Remover ${b.user.displayName}`,
+      body: b.builtin ? 'O bot de música sai do servidor e para de tocar.' : 'O bot sai do servidor. Você pode adicionar um bot novo depois.',
+      confirmText: 'Remover',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await this.api.delete(`/guilds/${this.guildId()}/bots/${b.user.id}`);
+      await this.loadBots();
+    } catch (e) {
+      this.ui.error(e);
+    }
+  }
+
+  async copyToken(token: string) {
+    await navigator.clipboard.writeText(token);
+    this.ui.toast('Token copiado.', 'success');
   }
 
   openInvites() {
