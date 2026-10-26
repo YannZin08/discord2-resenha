@@ -30,6 +30,16 @@ interface Peer {
   queue: Promise<void>;
 }
 
+export interface PeerInfo {
+  userId: number;
+  state: RTCPeerConnectionState;
+  /** lan = same network, direct = peer-to-peer over the internet, relay = through TURN. */
+  route: 'lan' | 'direct' | 'relay' | null;
+  rtt: number | null;
+  received: number;
+  sent: number;
+}
+
 export interface RemoteVideo {
   camera: MediaStream | null;
   screen: MediaStream | null;
@@ -117,12 +127,14 @@ export class Voice {
   readonly remoteVideo = signal<Record<string, RemoteVideo>>({});
   readonly peerStates = signal<Record<string, RTCPeerConnectionState>>({});
   readonly hasMic = signal(true);
+  /** Whether the server handed us a TURN relay (needed behind CGNAT / strict firewalls). */
+  readonly relay = signal(false);
 
   readonly connectionLabel = computed(() => {
     if (!this.channelId()) return '';
     if (!this.active()) return 'Conectando...';
     const states = Object.values(this.peerStates());
-    if (states.some((s) => s === 'failed')) return 'Falha na conexão';
+    if (states.some((s) => s === 'failed' || s === 'disconnected')) return 'Falha na conexão';
     if (states.some((s) => s === 'connecting' || s === 'new')) return 'Conectando ao RTC';
     return 'Voz conectada';
   });
@@ -189,10 +201,12 @@ export class Voice {
     this.channelId.set(channelId);
     this.guildId.set(guildId);
     try {
-      const res = await this.api.get<{ iceServers: RTCIceServer[] }>('/voice/ice');
+      const res = await this.api.get<{ iceServers: RTCIceServer[]; relay?: boolean }>('/voice/ice');
       this.iceServers = res.iceServers;
+      this.relay.set(!!res.relay);
     } catch {
       this.iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
+      this.relay.set(false);
     }
     await this.startMic();
     if (this.channelId() !== channelId) return;
@@ -341,6 +355,35 @@ export class Voice {
         // not negotiated yet; the retry will apply it
       }
     }
+  }
+
+  /** Per-person connection details for the "Detalhes da conexão" window. */
+  async diagnostics(): Promise<PeerInfo[]> {
+    const out: PeerInfo[] = [];
+    for (const p of this.peers.values()) {
+      const info: PeerInfo = { userId: p.userId, state: p.pc.connectionState, route: null, rtt: null, received: 0, sent: 0 };
+      try {
+        const stats = await p.pc.getStats();
+        let pairId: string | undefined;
+        stats.forEach((r) => {
+          if (r.type === 'transport' && r.selectedCandidatePairId) pairId = r.selectedCandidatePairId;
+          if (r.type === 'inbound-rtp') info.received += r.bytesReceived ?? 0;
+          if (r.type === 'outbound-rtp') info.sent += r.bytesSent ?? 0;
+        });
+        if (!pairId) stats.forEach((r) => r.type === 'candidate-pair' && r.nominated && r.state === 'succeeded' && (pairId = r.id));
+        const pair = pairId ? stats.get(pairId) : null;
+        if (pair) {
+          const local = stats.get(pair.localCandidateId)?.candidateType;
+          const remote = stats.get(pair.remoteCandidateId)?.candidateType;
+          info.route = local === 'relay' || remote === 'relay' ? 'relay' : local === 'host' && remote === 'host' ? 'lan' : 'direct';
+          info.rtt = pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : null;
+        }
+      } catch {
+        // stats unavailable on a closing connection
+      }
+      out.push(info);
+    }
+    return out;
   }
 
   setUserVolume(userId: number, volume: number) {
@@ -535,6 +578,7 @@ export class Voice {
     };
     // If a connection never comes up (lost candidate, network change), retry ICE.
     let since = Date.now();
+    let warned = false;
     const watchdog = setInterval(() => {
       if (pc.connectionState === 'closed') return clearInterval(watchdog);
       if (pc.connectionState === 'connected') {
@@ -543,6 +587,16 @@ export class Voice {
       }
       if (Date.now() - since > 12_000) {
         since = Date.now();
+        if (!warned) {
+          warned = true;
+          const name = this.store.nameIn(this.guildId(), userId);
+          this.ui.toast(
+            this.relay()
+              ? `Não foi possível conectar com ${name}. Tentando de novo...`
+              : `Não foi possível conectar o áudio e o vídeo com ${name}: a rede está bloqueando a conexão direta. O servidor precisa de um retransmissor (TURN).`,
+            'error',
+          );
+        }
         pc.restartIce();
       }
     }, 4000);

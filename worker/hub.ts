@@ -1031,27 +1031,41 @@ export class Hub extends DurableObject<Env> {
     }
   }
 
+  /**
+   * STUN is enough when both sides can reach each other directly. Behind CGNAT, corporate
+   * firewalls or isolated Wi-Fi the media needs a TURN relay: Cloudflare's (TURN_KEY_ID +
+   * TURN_KEY_API_TOKEN) or any other provider (TURN_URLS + TURN_USERNAME + TURN_CREDENTIAL).
+   */
   private async iceServers() {
-    const stun = { urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] };
-    const { TURN_KEY_ID: keyId, TURN_KEY_API_TOKEN: token } = this.env;
+    type Ice = { urls: string | string[]; username?: string; credential?: string };
+    const servers: Ice[] = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302'] }];
+    const { TURN_KEY_ID: keyId, TURN_KEY_API_TOKEN: token, TURN_URLS, TURN_USERNAME, TURN_CREDENTIAL } = this.env;
+    if (TURN_URLS && TURN_USERNAME && TURN_CREDENTIAL) {
+      servers.push({ urls: TURN_URLS.split(',').map((u) => u.trim()).filter(Boolean), username: TURN_USERNAME, credential: TURN_CREDENTIAL });
+    }
     if (keyId && token) {
-      for (const path of ['generate-ice-servers', 'generate']) {
-        try {
-          const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${keyId}/credentials/${path}`, {
-            method: 'POST',
-            headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-            body: JSON.stringify({ ttl: 86400 }),
-          });
-          if (!res.ok) continue;
-          const data = await res.json<{ iceServers: unknown }>();
-          const servers = Array.isArray(data.iceServers) ? data.iceServers : [data.iceServers];
-          return { iceServers: [stun, ...servers] };
-        } catch {
-          // fall back to STUN only
+      try {
+        const res = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${keyId}/credentials/generate-ice-servers`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ ttl: 86400 }),
+        });
+        if (res.ok) {
+          const data = await res.json<{ iceServers: Ice | Ice[] }>();
+          for (const s of Array.isArray(data.iceServers) ? data.iceServers : [data.iceServers]) {
+            // Port 53 URLs tend to time out in browsers.
+            const urls = (Array.isArray(s.urls) ? s.urls : [s.urls]).filter((u) => !/:53(\?|$)/.test(u));
+            if (urls.length && s.username) servers.push({ ...s, urls });
+          }
+        } else {
+          console.error('TURN credentials failed', res.status, await res.text());
         }
+      } catch (e) {
+        console.error('TURN credentials failed', e);
       }
     }
-    return { iceServers: [stun] };
+    const relay = servers.some((s) => (Array.isArray(s.urls) ? s.urls : [s.urls]).some((u) => u.startsWith('turn')));
+    return { iceServers: servers, relay };
   }
 
   // ---------------------------------------------------------------- friends & DMs

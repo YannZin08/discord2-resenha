@@ -4394,6 +4394,37 @@ app-voice-stage {
   flex-shrink: 0;
 }
 
+.vp-status {
+  cursor: pointer;
+}
+.vp-status:hover {
+  text-decoration: underline;
+}
+.conn-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.conn-text {
+  min-width: 0;
+}
+.conn-name {
+  font-weight: 600;
+  color: var(--header-primary);
+}
+.conn-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.conn-sub.ok {
+  color: var(--green);
+}
+.conn-sub.bad {
+  color: var(--red);
+}
+
 /* ------------------------------------------------------------- responsive */
 
 @media (max-width: 1100px) {

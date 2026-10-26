@@ -54,9 +54,11 @@ npm run deploy
 
 O app fica em `https://resenha.<sua-conta>.workers.dev`. Dá para apontar um domínio próprio pelo painel da Cloudflare.
 
-### Voz em redes difíceis (opcional)
+### Voz em redes difíceis (TURN)
 
-As chamadas são ponto a ponto. Na maioria das redes domésticas isso funciona só com STUN, que já vem configurado. Em redes corporativas ou 4G com NAT restrito, configure um TURN da Cloudflare (Realtime → TURN) e salve as credenciais como segredos:
+As chamadas são ponto a ponto. Em muitas redes (CGNAT de provedor, firewall de empresa, Wi-Fi com isolamento) a conexão direta não passa: todos entram na call, mas ninguém se ouve e a tela compartilhada fica preta. Clique em "Voz conectada" no painel da chamada para ver "Detalhes da conexão" (direta, retransmitida ou falhando).
+
+Para resolver, configure um retransmissor TURN. Com a TURN da Cloudflare (painel → Realtime → TURN Server → criar chave), salve as credenciais como segredos:
 
 ```bash
 npx wrangler secret put TURN_KEY_ID
@@ -65,6 +67,8 @@ npx wrangler secret put TURN_KEY_ID
 ```bash
 npx wrangler secret put TURN_KEY_API_TOKEN
 ```
+
+Ou, com outro provedor de TURN, use `TURN_URLS` (URLs `turn:`/`turns:` separadas por vírgula), `TURN_USERNAME` e `TURN_CREDENTIAL`.
 
 ## Limites conhecidos
 

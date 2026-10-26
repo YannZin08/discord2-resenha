@@ -7,6 +7,7 @@ import type { Status, StatusPref } from '../core/types';
 import { MenuItem, Ui } from '../core/ui';
 import { Voice } from '../core/voice';
 import { channelLabel, copyText } from '../core/util';
+import { ConnectionInfo } from './modals/connection-info';
 import { promptDialog } from './modals/dialogs';
 import { toggleStream } from './modals/go-live';
 import { UserSettings } from './modals/user-settings';
@@ -21,7 +22,13 @@ import { Tip } from './tooltip';
       <div class="voice-panel">
         <div class="vp-top">
           <div class="vp-info">
-            <div class="vp-status" [class.ok]="voice.connectionLabel() === 'Voz conectada'" [class.bad]="voice.connectionLabel() === 'Falha na conexão'">
+            <div
+              class="vp-status"
+              [class.ok]="voice.connectionLabel() === 'Voz conectada'"
+              [class.bad]="voice.connectionLabel() === 'Falha na conexão'"
+              appTip="Detalhes da conexão"
+              (click)="ui.open(connectionInfo)"
+            >
               <app-icon name="signal" [size]="16" /> {{ voice.connectionLabel() }}
             </div>
             <div class="vp-where" (click)="goToVoice()">{{ voiceWhere() }}</div>
@@ -69,6 +76,7 @@ export class UserPanel {
   private nav = inject(Nav);
   private session = inject(Session);
   readonly settings = UserSettings;
+  readonly connectionInfo = ConnectionInfo;
 
   readonly myStatus = computed<Status>(() => {
     const me = this.store.me();
