@@ -1,6 +1,8 @@
 import { Component, HostListener, computed, effect, inject } from '@angular/core';
 import { Nav } from './core/nav';
+import { Prefs } from './core/prefs';
 import { Session } from './core/session';
+import { applyTheme } from './core/themes';
 import { Store } from './core/store';
 import { Ui } from './core/ui';
 import { Auth } from './ui/auth';
@@ -54,6 +56,7 @@ export class App {
   private store = inject(Store);
   private nav = inject(Nav);
   private ui = inject(Ui);
+  private prefs = inject(Prefs);
   readonly tip = TIPS[Math.floor(Math.random() * TIPS.length)];
 
   readonly view = computed(() => {
@@ -67,6 +70,7 @@ export class App {
 
   constructor() {
     void this.session.init();
+    effect(() => applyTheme(this.prefs.data().theme, this.prefs.data().chatFont));
     effect(() => {
       const status = this.session.status();
       const route = this.nav.route().name;

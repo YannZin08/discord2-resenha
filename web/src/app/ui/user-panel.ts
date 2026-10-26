@@ -8,6 +8,7 @@ import { MenuItem, Ui } from '../core/ui';
 import { Voice } from '../core/voice';
 import { channelLabel, copyText } from '../core/util';
 import { promptDialog } from './modals/dialogs';
+import { toggleStream } from './modals/go-live';
 import { UserSettings } from './modals/user-settings';
 import { Avatar, Icon, STATUS_LABELS } from './shared';
 import { Tip } from './tooltip';
@@ -31,7 +32,7 @@ import { Tip } from './tooltip';
           <button class="vp-btn" [class.on]="!!voice.localCamera()" (click)="voice.toggleCamera()" [appTip]="voice.localCamera() ? 'Desligar câmera' : 'Ligar câmera'">
             <app-icon [name]="voice.localCamera() ? 'video' : 'videoOff'" [size]="20" />
           </button>
-          <button class="vp-btn" [class.on]="!!voice.localScreen()" (click)="voice.toggleScreen()" [appTip]="voice.localScreen() ? 'Parar transmissão' : 'Compartilhar tela'">
+          <button class="vp-btn" [class.on]="!!voice.localScreen()" (click)="stream()" [appTip]="voice.localScreen() ? 'Parar transmissão' : 'Transmitir tela'">
             <app-icon name="screen" [size]="20" />
           </button>
         </div>
@@ -80,6 +81,10 @@ export class UserPanel {
     if (c.guildId == null) return channelLabel(c, this.store.users(), this.store.me()?.id);
     return `${c.name} / ${this.store.guilds()[c.guildId]?.name ?? ''}`;
   });
+
+  stream() {
+    toggleStream(this.ui, this.voice);
+  }
 
   goToVoice() {
     const c = this.store.channels()[this.voice.channelId() ?? 0];

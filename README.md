@@ -16,6 +16,8 @@ Roda inteiro na Cloudflare (mesma stack do AcessosVirtual):
 - Indicador de "digitando", não lidas, contador de menções, notificações na área de trabalho e sons.
 - Amigos (pedidos, aceitar, bloquear), mensagens diretas e grupos de até 10 pessoas.
 - Voz e vídeo por WebRTC: canais de voz, chamadas na DM com toque, câmera, compartilhamento de tela com áudio, indicador de quem está falando, volume por pessoa, escolha de microfone, alto-falante e câmera.
+- Transmissão de tela na qualidade máxima por padrão: resolução da tela até 4K, 60 FPS, sem reduzir a resolução, bitrate alto (~25 Mbps em 4K) e codec com aceleração de hardware quando houver. Dá para mudar em "Transmitir tela" ou em Configurações → Transmissão, inclusive durante a transmissão. Quem assiste vê a resolução recebida (ex.: "AO VIVO 4K").
+- Temas: Claro, Cinza, Escuro, Meia-noite e temas coloridos (Aurora, Pôr do sol, Floresta, Oceano, Lua carmesim, Neon, Algodão-doce), além do tamanho da fonte do chat. Fica em Configurações → Aparência, salvo por dispositivo.
 - Ctrl+K para pular para qualquer canal ou conversa; menus de clique direito em quase tudo; layout para celular; instalável como app (PWA).
 
 ## Rodar localmente
@@ -66,7 +68,7 @@ npx wrangler secret put TURN_KEY_API_TOKEN
 
 ## Limites conhecidos
 
-- A voz é em malha (cada pessoa conecta com cada pessoa): fica boa até umas 8 pessoas por canal de voz.
+- A voz é em malha (cada pessoa conecta com cada pessoa): fica boa até umas 8 pessoas por canal de voz. Na transmissão, quem transmite envia uma cópia para cada pessoa assistindo: 4K a 60 FPS pede ~25 Mbps de upload por espectador, e o navegador reduz automaticamente se a internet não aguentar.
 - Os arquivos ficam no SQLite do Durable Object: no plano gratuito são uns 5 GB no total (somando mensagens e arquivos). Se crescer, dá para mover os arquivos para o R2.
 - Permissões simplificadas: todo membro vê todos os canais; quem tem cargo de administrador (ou o dono) gerencia o servidor.
 - Não há app nativo para celular: no celular, use pelo navegador ou "Adicionar à tela inicial".

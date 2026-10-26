@@ -9,15 +9,18 @@ import { Voice } from '../../core/voice';
 import { avatarUrl, defaultAvatarColor } from '../../core/util';
 import { Avatar, Icon } from '../shared';
 import { confirmDialog, promptDialog } from './dialogs';
+import { StreamOptions } from './go-live';
 import { pickImage, squareImage } from './image';
+import { StreamSettings } from '../../core/prefs';
+import { THEMES } from '../../core/themes';
 
-type Section = 'account' | 'profile' | 'voice' | 'notifications';
+type Section = 'account' | 'profile' | 'appearance' | 'voice' | 'stream' | 'notifications';
 
 const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c', '#9b59b6', '#34495e', '#e67e22', '#2c3e50'];
 
 @Component({
   selector: 'app-user-settings',
-  imports: [FormsModule, Icon, Avatar],
+  imports: [FormsModule, Icon, Avatar, StreamOptions],
   template: `
     @if (store.me(); as me) {
       <div class="settings-layer">
@@ -27,7 +30,9 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
             <button [class.active]="section() === 'account'" (click)="section.set('account')">Minha conta</button>
             <button [class.active]="section() === 'profile'" (click)="section.set('profile')">Perfis</button>
             <h3>Configurações do app</h3>
+            <button [class.active]="section() === 'appearance'" (click)="section.set('appearance')">Aparência</button>
             <button [class.active]="section() === 'voice'" (click)="openVoice()">Voz e vídeo</button>
+            <button [class.active]="section() === 'stream'" (click)="section.set('stream')">Transmissão</button>
             <button [class.active]="section() === 'notifications'" (click)="section.set('notifications')">Notificações</button>
             <div class="settings-sep"></div>
             <button class="danger" (click)="logout()">Sair <app-icon name="logout" [size]="16" /></button>
@@ -170,6 +175,68 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                   }
                 </select>
               }
+              @case ('appearance') {
+                <h2>Aparência</h2>
+                <div class="appearance-preview">
+                  <div class="message">
+                    <div class="msg-avatar"><app-avatar [user]="me" [size]="40" /></div>
+                    <h3 class="msg-header">
+                      <span class="msg-author">{{ me.displayName }}</span>
+                      <span class="msg-time">Hoje às 12:00</span>
+                    </h3>
+                    <div class="msg-content">Olha como fica o <strong>Resenha</strong> com esse tema 👀</div>
+                  </div>
+                  <div class="message grouped">
+                    <div class="msg-content">E as menções: <span class="mention">&#64;{{ me.displayName }}</span></div>
+                  </div>
+                </div>
+                <h3 class="settings-h3">Tema</h3>
+                <div class="theme-grid">
+                  @for (t of baseThemes; track t.id) {
+                    <div class="theme-item">
+                      <button class="theme-swatch" [class.active]="prefs.data().theme === t.id" [style.background]="t.swatch" [attr.aria-label]="t.label" (click)="prefs.set('theme', t.id)">
+                        @if (prefs.data().theme === t.id) {
+                          <span class="theme-check"><app-icon name="check" [size]="14" /></span>
+                        }
+                      </button>
+                      <span>{{ t.label }}</span>
+                    </div>
+                  }
+                </div>
+                <h3 class="settings-h3">Temas coloridos</h3>
+                <div class="theme-grid">
+                  @for (t of colorThemes; track t.id) {
+                    <div class="theme-item">
+                      <button class="theme-swatch" [class.active]="prefs.data().theme === t.id" [style.background]="t.swatch" [attr.aria-label]="t.label" (click)="prefs.set('theme', t.id)">
+                        @if (prefs.data().theme === t.id) {
+                          <span class="theme-check"><app-icon name="check" [size]="14" /></span>
+                        }
+                      </button>
+                      <span>{{ t.label }}</span>
+                    </div>
+                  }
+                </div>
+                <div class="settings-divider"></div>
+                <h3 class="settings-h3">Tamanho da fonte do chat</h3>
+                <div class="font-slider">
+                  <span class="font-a small">A</span>
+                  <input type="range" min="12" max="22" step="1" [value]="prefs.data().chatFont" (input)="prefs.set('chatFont', +$any($event.target).value)" />
+                  <span class="font-a big">A</span>
+                  <span class="font-value">{{ prefs.data().chatFont }}px</span>
+                </div>
+                <p class="hint">O tema fica salvo neste dispositivo.</p>
+              }
+              @case ('stream') {
+                <h2>Transmissão</h2>
+                <p class="hint">
+                  Qualidade usada quando você compartilha a tela. O padrão é o máximo: a resolução da sua tela (até 4K), 60 FPS e sem baixar a
+                  resolução durante a transmissão.
+                </p>
+                <app-stream-options [settings]="prefs.data().stream" (settingsChange)="saveStream($event)" />
+                @if (voice.localScreen()) {
+                  <p class="add-msg success">Você está ao vivo: as mudanças já valem para a transmissão atual.</p>
+                }
+              }
               @case ('notifications') {
                 <h2>Notificações</h2>
                 <label class="toggle-row">
@@ -209,6 +276,8 @@ export class UserSettings {
   private api = inject(Api);
   private session = inject(Session);
   readonly banners = BANNERS;
+  readonly baseThemes = THEMES.filter((t) => t.group === 'base');
+  readonly colorThemes = THEMES.filter((t) => t.group === 'color');
   readonly meterBars = Array.from({ length: 30 }, (_, i) => i);
   readonly section = signal<Section>('account');
   readonly pwError = signal('');
@@ -346,6 +415,11 @@ export class UserSettings {
     this.testTimer = null;
     this.testing.set(false);
     this.level.set(0);
+  }
+
+  saveStream(s: StreamSettings) {
+    if (this.voice.localScreen()) void this.voice.updateStream(s);
+    else this.prefs.set('stream', s);
   }
 
   async setNotifications(on: boolean) {

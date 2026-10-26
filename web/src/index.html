@@ -13,6 +13,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script>
+      // Apply the saved theme before the app boots, so there's no flash of the default one.
+      try {
+        var p = JSON.parse(localStorage.getItem('prefs') || '{}');
+        if (p.theme) document.documentElement.dataset.theme = p.theme;
+        if (p.chatFont) document.documentElement.style.setProperty('--chat-font', p.chatFont + 'px');
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <app-root></app-root>

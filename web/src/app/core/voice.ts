@@ -1,7 +1,7 @@
 import { Injectable, computed, effect, signal, untracked } from '@angular/core';
 import { Api } from './api';
 import { Gateway } from './gateway';
-import { Prefs } from './prefs';
+import { Prefs, StreamSettings } from './prefs';
 import { sounds } from './sounds';
 import { Store } from './store';
 import { Ui } from './ui';
@@ -37,6 +37,69 @@ export interface RemoteVideo {
 
 const SPEAK_THRESHOLD = 14;
 
+function videoConstraints(s: StreamSettings): MediaTrackConstraints {
+  // "source" captures the screen as-is, up to 4K; caps never upscale a smaller screen.
+  const h = s.resolution === 'source' ? 2160 : Number(s.resolution);
+  return { width: { max: Math.round((h * 16) / 9) }, height: { max: h }, frameRate: { ideal: s.fps, max: s.fps } };
+}
+
+function displayOptions(s: StreamSettings): DisplayMediaStreamOptions {
+  return {
+    video: videoConstraints(s),
+    audio: s.audio ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false } : false,
+    // Chrome-only hints, ignored by other browsers.
+    selfBrowserSurface: 'exclude',
+    surfaceSwitching: 'include',
+    systemAudio: s.audio ? 'include' : 'exclude',
+  } as DisplayMediaStreamOptions;
+}
+
+/** ~0.05 bits per pixel per frame: 4K60 gets ~25 Mbps, 1080p60 ~6 Mbps. */
+function streamBitrate(track: MediaStreamTrack, fps: number): number {
+  const s = track.getSettings();
+  const pixels = (s.width ?? 1920) * (s.height ?? 1080);
+  const rate = Math.min(s.frameRate ?? fps, fps);
+  return Math.round(Math.min(40_000_000, Math.max(2_500_000, pixels * rate * 0.05)));
+}
+
+/** Prefers a hardware-accelerated codec for streaming (AV1/H.264/VP9), falling back to H.264. */
+async function pickStreamCodec(): Promise<string | null> {
+  const caps = RTCRtpSender.getCapabilities?.('video');
+  if (!caps) return null;
+  const have = new Set(caps.codecs.map((c) => c.mimeType.toLowerCase()));
+  const candidates = ['video/AV1', 'video/H264', 'video/VP9'].filter((m) => have.has(m.toLowerCase()));
+  for (const mime of candidates) {
+    try {
+      const info = await navigator.mediaCapabilities.encodingInfo({
+        type: 'webrtc',
+        video: { contentType: mime, width: 3840, height: 2160, bitrate: 25_000_000, framerate: 60 },
+      });
+      if (info.supported && info.powerEfficient) return mime;
+    } catch {
+      // this browser can't answer for webrtc; try the next one
+    }
+  }
+  return candidates.includes('video/H264') ? 'video/H264' : (candidates[0] ?? null);
+}
+
+function preferCodec(t: RTCRtpTransceiver, mime: string | null) {
+  if (!mime || !t.setCodecPreferences) return;
+  const rank = (c: RTCRtpCodec) => {
+    if (c.mimeType.toLowerCase() !== mime.toLowerCase()) return 2;
+    // For H.264, High/Main profiles compress better than Baseline.
+    return /profile-level-id=(64|4d)/i.test(c.sdpFmtpLine ?? '') ? 0 : 1;
+  };
+  for (const caps of [RTCRtpReceiver.getCapabilities('video'), RTCRtpSender.getCapabilities('video')]) {
+    if (!caps) continue;
+    try {
+      t.setCodecPreferences([...caps.codecs].sort((a, b) => rank(a) - rank(b)));
+      return;
+    } catch {
+      // try the other capability list
+    }
+  }
+}
+
 /**
  * Voice & video over WebRTC: a full mesh between everyone in the channel, with
  * signaling relayed by the server ("perfect negotiation" handles offer races).
@@ -71,6 +134,7 @@ export class Voice {
   private localAnalyser: { node: AnalyserNode; data: Uint8Array<ArrayBuffer> } | null = null;
   private speakTimer: ReturnType<typeof setInterval> | null = null;
   private lastSpoke = new Map<number, number>();
+  private streamCodec: string | null = null;
 
   constructor(
     private store: Store,
@@ -190,22 +254,92 @@ export class Voice {
     }
   }
 
-  async toggleScreen() {
-    if (this.localScreen()) {
-      this.stopScreen();
-      return;
-    }
+  stopScreenShare() {
+    this.stopScreen();
+  }
+
+  /** Goes live with the chosen quality (the "Transmitir tela" window calls this). */
+  async startScreen(settings: StreamSettings) {
+    if (this.localScreen()) this.stopScreen();
+    this.prefs.set('stream', settings);
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: true });
-      stream.getVideoTracks()[0]?.addEventListener('ended', () => this.stopScreen());
-      this.localScreen.set(stream);
-      for (const p of this.peers.values()) {
-        for (const t of stream.getTracks()) p.screenSenders.push(p.pc.addTrack(t, stream));
+      const stream = await navigator.mediaDevices.getDisplayMedia(displayOptions(settings));
+      const video = stream.getVideoTracks()[0];
+      if (!video) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
       }
+      video.contentHint = settings.priority === 'quality' ? 'detail' : 'motion';
+      video.addEventListener('ended', () => this.stopScreen());
+      this.streamCodec ??= await pickStreamCodec();
+      this.localScreen.set(stream);
+      for (const p of this.peers.values()) this.addScreenTracks(p, stream);
       this.broadcastMedia();
       this.sendState();
     } catch (e) {
       if ((e as DOMException)?.name !== 'NotAllowedError') this.ui.toast('Não foi possível compartilhar a tela.', 'error');
+    }
+  }
+
+  /** Changes the quality of a live stream without stopping it. */
+  async updateStream(settings: StreamSettings) {
+    this.prefs.set('stream', settings);
+    const video = this.localScreen()?.getVideoTracks()[0];
+    if (!video) return;
+    try {
+      await video.applyConstraints(videoConstraints(settings));
+    } catch {
+      // keep the current capture size
+    }
+    video.contentHint = settings.priority === 'quality' ? 'detail' : 'motion';
+    for (const p of this.peers.values()) for (const s of p.screenSenders) if (s.track?.kind === 'video') void this.tuneStreamSender(s);
+  }
+
+  private addScreenTracks(p: Peer, stream: MediaStream) {
+    const fps = this.prefs.get('stream').fps;
+    for (const track of stream.getTracks()) {
+      const video = track.kind === 'video';
+      const t = p.pc.addTransceiver(track, {
+        direction: 'sendonly',
+        streams: [stream],
+        sendEncodings: [
+          video
+            ? { maxBitrate: streamBitrate(track, fps), maxFramerate: fps, scaleResolutionDownBy: 1, priority: 'high', networkPriority: 'high' }
+            : { maxBitrate: 192_000, priority: 'high' },
+        ],
+      });
+      if (video) {
+        preferCodec(t, this.streamCodec);
+        // Encoder parameters only stick once the sender is negotiated, so apply them again shortly after.
+        void this.tuneStreamSender(t.sender);
+        setTimeout(() => void this.tuneStreamSender(t.sender), 3000);
+      }
+      p.screenSenders.push(t.sender);
+    }
+  }
+
+  /** Full resolution, high bitrate and no downscaling: the stream should always look as sharp as possible. */
+  private async tuneStreamSender(sender: RTCRtpSender) {
+    const track = sender.track;
+    if (!track) return;
+    const s = this.prefs.get('stream');
+    const params = sender.getParameters() as RTCRtpSendParameters & { degradationPreference?: string };
+    if (!params.encodings?.length) params.encodings = [{}];
+    for (const e of params.encodings) {
+      e.maxBitrate = streamBitrate(track, s.fps);
+      e.maxFramerate = s.fps;
+      e.scaleResolutionDownBy = 1;
+    }
+    params.degradationPreference = s.priority === 'quality' ? 'maintain-resolution' : 'maintain-framerate';
+    try {
+      await sender.setParameters(params);
+    } catch {
+      try {
+        delete params.degradationPreference;
+        await sender.setParameters(params);
+      } catch {
+        // not negotiated yet; the retry will apply it
+      }
     }
   }
 
@@ -371,7 +505,7 @@ export class Voice {
     const cam = this.localCamera();
     if (cam) for (const t of cam.getVideoTracks()) peer.cameraSenders.push(pc.addTrack(t, cam));
     const screen = this.localScreen();
-    if (screen) for (const t of screen.getTracks()) peer.screenSenders.push(pc.addTrack(t, screen));
+    if (screen) this.addScreenTracks(peer, screen);
 
     pc.onnegotiationneeded = async () => {
       try {

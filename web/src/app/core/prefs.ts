@@ -1,6 +1,17 @@
 import { Injectable, effect, signal } from '@angular/core';
 import { save, store } from './util';
 
+export interface StreamSettings {
+  /** 'source' = the screen's own resolution, capped at 4K. */
+  resolution: 'source' | '1440' | '1080' | '720';
+  fps: 15 | 30 | 60;
+  /** 'quality' keeps resolution (sharp text, 4K); 'smooth' keeps frame rate (games). */
+  priority: 'quality' | 'smooth';
+  audio: boolean;
+}
+
+export const MAX_STREAM: StreamSettings = { resolution: 'source', fps: 60, priority: 'quality', audio: true };
+
 interface PrefsData {
   notifications: boolean;
   sounds: boolean;
@@ -13,6 +24,9 @@ interface PrefsData {
   compact: boolean;
   recentEmojis: string[];
   collapsed: Record<number, boolean>;
+  theme: string;
+  chatFont: number;
+  stream: StreamSettings;
 }
 
 const DEFAULTS: PrefsData = {
@@ -27,6 +41,9 @@ const DEFAULTS: PrefsData = {
   compact: false,
   recentEmojis: ['👍', '😂', '❤️', '😮', '😢', '🔥', '🎉', '👀'],
   collapsed: {},
+  theme: 'dark',
+  chatFont: 16,
+  stream: MAX_STREAM,
 };
 
 /** Per-device preferences, kept in localStorage. */

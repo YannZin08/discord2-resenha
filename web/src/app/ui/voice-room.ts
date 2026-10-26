@@ -4,6 +4,7 @@ import type { Channel } from '../core/types';
 import { Ui } from '../core/ui';
 import { Voice } from '../core/voice';
 import { channelLabel } from '../core/util';
+import { toggleStream } from './modals/go-live';
 import { Avatar, Icon, SrcObject } from './shared';
 import { Tip } from './tooltip';
 
@@ -34,7 +35,15 @@ interface Tile {
             (click)="toggleFocus(t.key)"
           >
             @if (t.stream) {
-              <video [appSrcObject]="t.stream" autoplay playsinline [muted]="true" [class.mirror]="t.self && t.kind === 'user'"></video>
+              <video
+                [appSrcObject]="t.stream"
+                autoplay
+                playsinline
+                [muted]="true"
+                [class.mirror]="t.self && t.kind === 'user'"
+                (resize)="onResize(t.key, $event)"
+                (loadedmetadata)="onResize(t.key, $event)"
+              ></video>
               <button class="tile-fs" appTip="Tela cheia" (click)="fullscreen($event)"><app-icon name="fullscreen" [size]="18" /></button>
             } @else {
               <div class="tile-avatar"><app-avatar [user]="store.users()[t.userId]" [size]="compact() ? 64 : 80" /></div>
@@ -42,6 +51,9 @@ interface Tile {
             <div class="tile-label">
               @if (t.kind === 'screen') {
                 <span class="live-badge">AO VIVO</span>
+                @if (quality()[t.key]; as q) {
+                  <span class="quality-badge">{{ q }}</span>
+                }
               }
               <span>{{ store.nameIn(channel().guildId, t.userId) }}</span>
               @if (t.kind === 'user') {
@@ -61,7 +73,7 @@ interface Tile {
           <button class="round-btn" [class.off]="!voice.localCamera()" [appTip]="voice.localCamera() ? 'Desligar câmera' : 'Ligar câmera'" (click)="voice.toggleCamera()">
             <app-icon [name]="voice.localCamera() ? 'video' : 'videoOff'" />
           </button>
-          <button class="round-btn" [class.on]="!!voice.localScreen()" [appTip]="voice.localScreen() ? 'Parar transmissão' : 'Compartilhar tela'" (click)="voice.toggleScreen()">
+          <button class="round-btn" [class.on]="!!voice.localScreen()" [appTip]="voice.localScreen() ? 'Parar transmissão' : 'Transmitir tela'" (click)="stream()">
             <app-icon name="screen" />
           </button>
           <button class="round-btn" [class.off]="voice.mute() || voice.deaf()" [appTip]="voice.mute() || voice.deaf() ? 'Ativar microfone' : 'Silenciar'" (click)="voice.toggleMute()">
@@ -84,6 +96,9 @@ export class VoiceStage {
   readonly store = inject(Store);
   readonly voice = inject(Voice);
   readonly focus = signal<string | null>(null);
+  /** Resolution actually being received for each stream tile, e.g. "4K". */
+  readonly quality = signal<Record<string, string>>({});
+  private ui = inject(Ui);
 
   readonly connectedHere = computed(() => this.voice.channelId() === this.channel().id);
 
@@ -102,6 +117,19 @@ export class VoiceStage {
   });
 
   readonly focusedTile = computed(() => this.tiles().find((t) => t.key === this.focus()) ?? null);
+
+  stream() {
+    toggleStream(this.ui, this.voice);
+  }
+
+  onResize(key: string, e: Event) {
+    const v = e.target as HTMLVideoElement;
+    // Classify by the long side so ultrawide screens still read as 4K / 1440p.
+    const w = Math.max(v.videoWidth, v.videoHeight);
+    if (!w) return;
+    const label = w >= 3800 ? '4K' : w >= 2500 ? '1440p' : w >= 1900 ? '1080p' : w >= 1260 ? '720p' : `${Math.min(v.videoWidth, v.videoHeight)}p`;
+    if (this.quality()[key] !== label) this.quality.update((q) => ({ ...q, [key]: label }));
+  }
 
   toggleFocus(key: string) {
     this.focus.set(this.focus() === key ? null : key);
