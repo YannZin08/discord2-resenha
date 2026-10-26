@@ -1,0 +1,18 @@
+name = "resenha"
+account_id = "7e67e731bde2cac5f438f7332892d591"
+compatibility_date = "2026-07-29"
+main = "./worker/index.ts"
+
+[assets]
+directory = "./web/dist/web/browser"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "Hub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Hub"]

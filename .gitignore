@@ -1,0 +1,6 @@
+.dev.vars
+.wrangler/
+node_modules/
+web/dist/
+web/.angular/
+.claude/settings.local.json

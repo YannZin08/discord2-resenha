@@ -1,0 +1,52 @@
+import { Injectable, effect, signal } from '@angular/core';
+import { save, store } from './util';
+
+interface PrefsData {
+  notifications: boolean;
+  sounds: boolean;
+  inputDevice: string;
+  outputDevice: string;
+  videoDevice: string;
+  mute: boolean;
+  deaf: boolean;
+  userVolumes: Record<number, number>;
+  compact: boolean;
+  recentEmojis: string[];
+  collapsed: Record<number, boolean>;
+}
+
+const DEFAULTS: PrefsData = {
+  notifications: true,
+  sounds: true,
+  inputDevice: 'default',
+  outputDevice: 'default',
+  videoDevice: 'default',
+  mute: false,
+  deaf: false,
+  userVolumes: {},
+  compact: false,
+  recentEmojis: ['👍', '😂', '❤️', '😮', '😢', '🔥', '🎉', '👀'],
+  collapsed: {},
+};
+
+/** Per-device preferences, kept in localStorage. */
+@Injectable({ providedIn: 'root' })
+export class Prefs {
+  readonly data = signal<PrefsData>({ ...DEFAULTS, ...store<Partial<PrefsData>>('prefs', {}) });
+
+  constructor() {
+    effect(() => save('prefs', this.data()));
+  }
+
+  get<K extends keyof PrefsData>(k: K): PrefsData[K] {
+    return this.data()[k];
+  }
+
+  set<K extends keyof PrefsData>(k: K, v: PrefsData[K]) {
+    this.data.update((d) => ({ ...d, [k]: v }));
+  }
+
+  useEmoji(e: string) {
+    this.set('recentEmojis', [e, ...this.get('recentEmojis').filter((x) => x !== e)].slice(0, 24));
+  }
+}

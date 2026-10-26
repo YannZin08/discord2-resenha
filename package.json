@@ -1,0 +1,20 @@
+{
+  "name": "resenha",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "build:web": "npm --prefix web install --no-audit --no-fund && npm --prefix web run build",
+    "build": "npm run typecheck && npm run build:web",
+    "dev": "wrangler dev --port 8787",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260921.1",
+    "typescript": "~5.9",
+    "wrangler": "^4.115.0"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "workerd@1.20261019.1": true
+  }
+}
