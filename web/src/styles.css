@@ -3486,6 +3486,9 @@ app-profile-card {
   padding: 12px;
   border-radius: 8px;
   background: var(--bg-floating);
+  /* Long links and words without spaces wrap instead of running out of the card. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .profile-body .profile-section {
   margin: 12px 0 0;
@@ -3594,14 +3597,19 @@ app-profile-card {
   gap: 4px;
   font-size: 14px;
 }
-.profile-dates span {
-  display: inline-flex;
+.pd-row {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  column-gap: 6px;
+}
+.pd-date {
+  white-space: nowrap;
 }
 .profile-dates small {
   font-size: 12px;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 .theme-pickers {
   display: flex;
@@ -3652,6 +3660,10 @@ app-profile-card {
   font-size: 14px;
 }
 .profile-about {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.profile-about code.inline {
   white-space: pre-wrap;
 }
 .role-pills {

@@ -1,10 +1,12 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Api } from '../core/api';
+import { renderMarkdown } from '../core/markdown';
 import { Nav } from '../core/nav';
 import { Store } from '../core/store';
 import type { User } from '../core/types';
 import { MenuItem, Ui } from '../core/ui';
-import { bannerImage, channelLabel, defaultAvatarColor, formatLongDate } from '../core/util';
+import { bannerImage, channelLabel, defaultAvatarColor } from '../core/util';
 import { Voice } from '../core/voice';
 import { userMenuItems } from './menus';
 import { Avatar, Icon } from './shared';
@@ -108,7 +110,7 @@ const BADGES: Record<string, Badge> = {
         @if (u.about) {
           <div class="profile-section">
             <h3>Sobre mim</h3>
-            <p class="profile-about">{{ u.about }}</p>
+            <p class="profile-about" [innerHTML]="aboutHtml()"></p>
           </div>
         }
         @if (call(); as c) {
@@ -153,9 +155,9 @@ const BADGES: Record<string, Badge> = {
         <div class="profile-section">
           <h3>Membro desde</h3>
           <div class="profile-dates">
-            <span><app-icon name="chat" [size]="14" />{{ date(u.createdAt) }} <small>no Resenha</small></span>
+            <span class="pd-row"><app-icon name="chat" [size]="14" /><span class="pd-date">{{ date(u.createdAt) }}</span><small>no Resenha</small></span>
             @if (joinedAt(); as j) {
-              <span><app-icon name="group" [size]="14" />{{ date(j) }} <small>neste servidor</small></span>
+              <span class="pd-row"><app-icon name="group" [size]="14" /><span class="pd-date">{{ date(j) }}</span><small>neste servidor</small></span>
             }
           </div>
         </div>
@@ -175,9 +177,20 @@ export class ProfileCard {
   private ui = inject(Ui);
   private api = inject(Api);
   private nav = inject(Nav);
+  private sanitizer = inject(DomSanitizer);
 
   readonly banner = bannerImage;
   readonly extras = signal<ProfileExtras | null>(null);
+  /** "Sobre mim" with the chat's formatting: clickable links, **bold**, emojis, mentions. */
+  readonly aboutHtml = computed<SafeHtml>(() => {
+    const gid = this.guildId();
+    const html = renderMarkdown(this.user().about, {
+      userName: (id) => (this.store.users()[id] ? this.store.nameIn(gid, id) : null),
+      channelName: (id) => this.store.channels()[id]?.name ?? null,
+      meId: this.store.me()?.id,
+    });
+    return this.sanitizer.bypassSecurityTrustHtml(html);
+  });
   readonly isMe = computed(() => this.user().id === this.store.me()?.id);
   readonly theme = computed(() => this.user().themeColors ?? null);
   readonly fallbackColor = computed(() => defaultAvatarColor(this.user().id));
@@ -241,8 +254,9 @@ export class ProfileCard {
     });
   }
 
+  /** Short like Discord's ("26 de out. de 2026"), so a date and its label fit on one line. */
   date(ts: number) {
-    return formatLongDate(ts);
+    return new Date(ts).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
   async editProfile() {
