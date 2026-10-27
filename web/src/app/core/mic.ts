@@ -5,6 +5,8 @@ export interface MicLevel {
   db: number;
   threshold: number;
   open: boolean;
+  /** Voice is going out right now (drives the green speaking ring). */
+  speaking: boolean;
 }
 
 let rnnoiseWasm: Promise<ArrayBuffer> | null = null;
@@ -16,7 +18,7 @@ let rnnoiseWasm: Promise<ArrayBuffer> | null = null;
  */
 export class MicPipeline {
   readonly stream: MediaStream;
-  readonly level: MicLevel = { db: -100, threshold: -50, open: false };
+  readonly level: MicLevel = { db: -100, threshold: -50, open: false, speaking: false };
   onLevel: ((l: MicLevel) => void) | null = null;
 
   private constructor(

@@ -14,6 +14,11 @@ class VoiceGate extends AudioWorkletProcessor {
     this.gain = 0;
     this.holdUntil = 0;
     this.blocks = 0;
+    // Speaking indicator: on after a few voiced blocks (~10 ms, so a click doesn't light it),
+    // off shortly after the voice stops; only while the gate is actually letting audio out.
+    this.voiced = 0;
+    this.voiceUntil = 0;
+    this.speaking = false;
     this.port.onmessage = (e) => Object.assign(this, e.data);
   }
 
@@ -32,7 +37,8 @@ class VoiceGate extends AudioWorkletProcessor {
 
     // Noise floor follows quiet parts quickly and loud parts very slowly.
     this.floor += (db - this.floor) * (db < this.floor ? 0.05 : 0.0008);
-    const threshold = this.auto ? Math.min(-25, Math.max(-65, this.floor + 14)) : this.threshold;
+    const autoThreshold = Math.min(-25, Math.max(-65, this.floor + 14));
+    const threshold = this.auto ? autoThreshold : this.threshold;
 
     const want = this.mode === 'open' || (this.mode === 'ptt' ? this.ptt : db > threshold);
     if (want) this.holdUntil = currentTime + (this.mode === 'ptt' ? this.releaseMs / 1000 : 0.3);
@@ -50,7 +56,18 @@ class VoiceGate extends AudioWorkletProcessor {
       }
     }
 
-    if (this.blocks++ % 16 === 0) this.port.postMessage({ db, threshold, open });
+    // With push-to-talk or an always-open mic the gate says nothing about voice, so the
+    // indicator uses the automatic threshold there.
+    const voice = db > (this.mode === 'vad' ? threshold : autoThreshold);
+    this.voiced = voice ? this.voiced + 1 : 0;
+    if (this.voiced >= 4) this.voiceUntil = currentTime + 0.2;
+    const speaking = open && currentTime < this.voiceUntil;
+
+    const tick = this.blocks++ % 16 === 0;
+    if (speaking !== this.speaking || tick) {
+      this.speaking = speaking;
+      this.port.postMessage({ db, threshold, open, speaking });
+    }
     return true;
   }
 }

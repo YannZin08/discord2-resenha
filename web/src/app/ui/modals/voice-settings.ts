@@ -186,7 +186,7 @@ export class VoiceSettings implements OnDestroy {
 
   /** Outside a call, the screen runs its own preview of the mic so the meter is live. */
   private preview: MicPipeline | null = null;
-  private previewLevel = signal<MicLevel>({ db: -100, threshold: -50, open: false });
+  private previewLevel = signal<MicLevel>({ db: -100, threshold: -50, open: false, speaking: false });
   readonly level = computed(() => this.voice.micLevel() ?? this.previewLevel());
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
 

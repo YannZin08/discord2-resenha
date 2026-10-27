@@ -24,7 +24,7 @@ interface Peer {
   screenAudio: HTMLAudioElement;
   streams: Map<string, MediaStream>;
   media: MediaInfo;
-  analyser: { node: AnalyserNode; data: Uint8Array<ArrayBuffer>; streamId: string } | null;
+  analyser: { node: AnalyserNode; data: Float32Array<ArrayBuffer>; streamId: string } | null;
   senders: RTCRtpSender[];
   cameraSenders: RTCRtpSender[];
   screenSenders: RTCRtpSender[];
@@ -47,7 +47,10 @@ export interface RemoteVideo {
   screen: MediaStream | null;
 }
 
-const SPEAK_THRESHOLD = 14;
+/** Level (dBFS) of someone else's audio that counts as speaking; their own voice gate already silences the rest. */
+const SPEAK_DB = -60;
+/** How long the ring stays after the voice stops, so it doesn't flicker between words. */
+const SPEAK_HANG_MS = 200;
 
 function videoConstraints(s: StreamSettings): MediaTrackConstraints {
   // "source" captures the screen as-is, up to 4K; caps never upscale a smaller screen.
@@ -565,7 +568,10 @@ export class Voice {
       this.pipe?.destroy();
       this.pipe = pipe;
       this.mic = pipe.stream;
-      pipe.onLevel = (l) => this.micLevel.set({ ...l });
+      pipe.onLevel = (l) => {
+        this.micLevel.set({ ...l });
+        this.updateSpeaking();
+      };
       pipe.setPtt(this.pttDown());
       this.hasMic.set(true);
       this.applyMute();
@@ -602,39 +608,44 @@ export class Voice {
       this.audioCtx ??= new AudioContext();
       if (this.audioCtx.state === 'suspended') void this.audioCtx.resume();
       const node = this.audioCtx.createAnalyser();
-      node.fftSize = 512;
+      // ~43 ms of audio: each check of the speaking loop covers everything since the last one.
+      node.fftSize = 2048;
       this.audioCtx.createMediaStreamSource(stream).connect(node);
-      return { node, data: new Uint8Array(node.frequencyBinCount) };
+      return { node, data: new Float32Array(node.fftSize) };
     } catch {
       return null;
     }
   }
 
-  private level(a: { node: AnalyserNode; data: Uint8Array<ArrayBuffer> }): number {
-    a.node.getByteFrequencyData(a.data);
+  /** Loudness (dBFS) of the latest audio, unsmoothed so the ring follows the voice without lag. */
+  private level(a: { node: AnalyserNode; data: Float32Array<ArrayBuffer> }): number {
+    a.node.getFloatTimeDomainData(a.data);
     let sum = 0;
-    for (let i = 0; i < a.data.length; i++) sum += a.data[i];
-    return sum / a.data.length;
+    for (let i = 0; i < a.data.length; i++) sum += a.data[i] * a.data[i];
+    return 10 * Math.log10(sum / a.data.length + 1e-12);
   }
 
   private startSpeakingLoop() {
     if (this.speakTimer) return;
     this.speakTimer = setInterval(() => {
       const now = Date.now();
-      const me = this.store.me()?.id;
-      // You count as speaking while the voice gate is open (voice activity or push-to-talk).
-      if (me != null && this.pipe?.level.open && this.pipe.level.db > -75 && !this.mute() && !this.deaf()) {
-        this.lastSpoke.set(me, now);
-      }
       for (const p of this.peers.values()) {
-        if (p.analyser && this.level(p.analyser) > SPEAK_THRESHOLD) this.lastSpoke.set(p.userId, now);
+        if (p.analyser && this.level(p.analyser) > SPEAK_DB) this.lastSpoke.set(p.userId, now);
       }
-      for (const id of this.externalSpeakers) this.lastSpoke.set(id, now);
-      const next = new Set<number>();
-      for (const [uid, t] of this.lastSpoke) if (now - t < 350) next.add(uid);
-      const cur = this.speaking();
-      if (next.size !== cur.size || [...next].some((u) => !cur.has(u))) this.speaking.set(next);
-    }, 80);
+      this.updateSpeaking();
+    }, 40);
+  }
+
+  private updateSpeaking() {
+    const now = Date.now();
+    const next = new Set<number>();
+    for (const [uid, t] of this.lastSpoke) if (now - t < SPEAK_HANG_MS) next.add(uid);
+    for (const id of this.externalSpeakers) next.add(id);
+    // Your own ring comes straight from the voice gate: only while your voice is really going out.
+    const me = this.store.me()?.id;
+    if (me != null && this.pipe?.level.speaking && !this.mute() && !this.deaf()) next.add(me);
+    const cur = this.speaking();
+    if (next.size !== cur.size || [...next].some((u) => !cur.has(u))) this.speaking.set(next);
   }
 
   private signal(to: string, data: unknown) {
