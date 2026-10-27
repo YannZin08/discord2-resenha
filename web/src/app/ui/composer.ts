@@ -16,7 +16,7 @@ import { Tip } from './tooltip';
 const MAX = 4000;
 
 const MUSIC_COMMANDS = [
-  { name: 'tocar', arg: '<link ou nome>', description: 'Toca do YouTube ou põe na fila' },
+  { name: 'tocar', arg: '<link, playlist ou nome>', description: 'Toca do YouTube ou põe na fila' },
   { name: 'pular', description: 'Pula para a próxima música' },
   { name: 'pausar', description: 'Pausa a música' },
   { name: 'continuar', description: 'Volta a tocar' },

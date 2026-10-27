@@ -12,6 +12,7 @@ interface YtPlayer {
   pauseVideo(): void;
   seekTo(s: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
+  getDuration(): number;
   getPlayerState(): number;
   setVolume(v: number): void;
   mute(): void;
@@ -68,6 +69,7 @@ export class MusicPlayer implements OnDestroy {
   private playerReady = false;
   private loadedVideo: string | null = null;
   private reportedIndex = -1;
+  private playingIndex = -1;
   private syncTimer = setInterval(() => this.sync(), 4000);
 
   /** Music in the voice channel you're connected to. */
@@ -118,6 +120,9 @@ export class MusicPlayer implements OnDestroy {
       this.player = null;
       this.playerReady = false;
       this.loadedVideo = null;
+      // The next /tocar starts a new queue at index 0 again: it must be reported too.
+      this.reportedIndex = -1;
+      this.playingIndex = -1;
       return;
     }
     if (!this.player) {
@@ -138,9 +143,10 @@ export class MusicPlayer implements OnDestroy {
           },
           onStateChange: (e: { data: number }) => {
             this.voice.setExternalSpeaking(this.botId(), e.data === PLAYING);
+            if (e.data === PLAYING) this.reportPlaying();
             if (e.data === ENDED) this.report('ended');
           },
-          onError: () => this.report('error'),
+          onError: (e: { data: number }) => this.report('error', e.data),
         },
       });
       return;
@@ -179,10 +185,18 @@ export class MusicPlayer implements OnDestroy {
     else this.player.unMute();
   }
 
-  private report(action: 'ended' | 'error') {
+  /** Tells the server the song really started here (otherwise the bot leaves) and how long it is. */
+  private reportPlaying() {
+    const m = this.state();
+    if (!m || m.index == null || this.playingIndex === m.index || !this.player) return;
+    this.playingIndex = m.index;
+    this.api.post(`/guilds/${m.guildId}/music`, { action: 'playing', index: m.index, duration: this.player.getDuration() }).catch(() => undefined);
+  }
+
+  private report(action: 'ended' | 'error', code?: number) {
     const m = this.state();
     if (!m || m.index == null || this.reportedIndex === m.index) return;
     this.reportedIndex = m.index;
-    this.api.post(`/guilds/${m.guildId}/music`, { action, index: m.index }).catch(() => undefined);
+    this.api.post(`/guilds/${m.guildId}/music`, { action, index: m.index, code }).catch(() => undefined);
   }
 }

@@ -10,12 +10,16 @@ import { Tip } from './tooltip';
 
 interface Tile {
   key: string;
+  sessionId: string;
   userId: number;
   kind: 'user' | 'screen';
   stream: MediaStream | null;
   self: boolean;
   mute: boolean;
   deaf: boolean;
+  /** Screen tiles: whether we watch this stream, and who does. */
+  watching: boolean;
+  viewers: number[];
 }
 
 /** Grid of call participants, with camera / screen tiles and call controls. */
@@ -32,9 +36,15 @@ interface Tile {
             [class.video]="!!t.stream"
             [class.focused]="focus() === t.key"
             [class.hidden-by-focus]="!!focusedTile() && focus() !== t.key"
-            (click)="toggleFocus(t.key)"
+            (click)="tileClick(t)"
           >
-            @if (t.stream) {
+            @if (t.kind === 'screen' && !t.self && !t.watching) {
+              <div class="stream-invite">
+                <app-avatar [user]="store.users()[t.userId]" [size]="compact() ? 48 : 64" />
+                <span class="live-badge">AO VIVO</span>
+                <button class="btn btn-brand" (click)="watch($event, t)">Assistir transmissão</button>
+              </div>
+            } @else if (t.stream) {
               <video
                 [appSrcObject]="t.stream"
                 autoplay
@@ -45,14 +55,25 @@ interface Tile {
                 (loadedmetadata)="onResize(t.key, $event)"
               ></video>
               <button class="tile-fs" appTip="Tela cheia" (click)="fullscreen($event)"><app-icon name="fullscreen" [size]="18" /></button>
+            } @else if (t.kind === 'screen') {
+              <div class="stream-invite">
+                <app-avatar [user]="store.users()[t.userId]" [size]="compact() ? 48 : 64" />
+                <span>Conectando à transmissão...</span>
+              </div>
             } @else {
               <div class="tile-avatar"><app-avatar [user]="store.users()[t.userId]" [size]="compact() ? 64 : 80" /></div>
+            }
+            @if (t.kind === 'screen' && t.watching) {
+              <button class="tile-leave-stream" (click)="stopWatching($event)">Sair da transmissão</button>
             }
             <div class="tile-label">
               @if (t.kind === 'screen') {
                 <span class="live-badge">AO VIVO</span>
-                @if (quality()[t.key]; as q) {
+                @if (t.stream && quality()[t.key]; as q) {
                   <span class="quality-badge">{{ q }}</span>
+                }
+                @if (t.viewers.length) {
+                  <span class="stream-viewers" [appTip]="viewerNames(t)"><app-icon name="eye" [size]="14" />{{ t.viewers.length }}</span>
                 }
               }
               <span>{{ store.nameIn(channel().guildId, t.userId) }}</span>
@@ -105,13 +126,19 @@ export class VoiceStage {
   readonly tiles = computed<Tile[]>(() => {
     const me = this.store.me()?.id;
     const remote = this.voice.remoteVideo();
+    const watching = this.voice.watching();
+    const inCall = this.store.voiceIn(this.channel().id);
     const out: Tile[] = [];
-    for (const v of this.store.voiceIn(this.channel().id)) {
+    for (const v of inCall) {
       const self = v.userId === me && v.sessionId === this.store.sessionId();
       const cam = self ? this.voice.localCamera() : v.video ? (remote[v.sessionId]?.camera ?? null) : null;
-      const screen = self ? this.voice.localScreen() : v.stream ? (remote[v.sessionId]?.screen ?? null) : null;
-      out.push({ key: v.sessionId, userId: v.userId, kind: 'user', stream: cam, self, mute: v.mute, deaf: v.deaf });
-      if (v.stream) out.push({ key: v.sessionId + ':screen', userId: v.userId, kind: 'screen', stream: screen, self, mute: v.mute, deaf: v.deaf });
+      const base = { sessionId: v.sessionId, userId: v.userId, self, mute: v.mute, deaf: v.deaf, watching: false, viewers: [] as number[] };
+      out.push({ ...base, key: v.sessionId, kind: 'user', stream: cam });
+      if (!v.stream) continue;
+      const watched = !self && watching === v.sessionId;
+      const screen = self ? this.voice.localScreen() : watched ? (remote[v.sessionId]?.screen ?? null) : null;
+      const viewers = inCall.filter((x) => x.watching === v.sessionId).map((x) => x.userId);
+      out.push({ ...base, key: v.sessionId + ':screen', kind: 'screen', stream: screen, watching: watched, viewers });
     }
     return out;
   });
@@ -131,8 +158,30 @@ export class VoiceStage {
     if (this.quality()[key] !== label) this.quality.update((q) => ({ ...q, [key]: label }));
   }
 
-  toggleFocus(key: string) {
-    this.focus.set(this.focus() === key ? null : key);
+  tileClick(t: Tile) {
+    if (t.kind === 'screen' && !t.self && !t.watching) void this.startWatching(t);
+    else this.focus.set(this.focus() === t.key ? null : t.key);
+  }
+
+  watch(e: MouseEvent, t: Tile) {
+    e.stopPropagation();
+    void this.startWatching(t);
+  }
+
+  /** Like Discord, the stream you start watching fills the stage. */
+  private async startWatching(t: Tile) {
+    await this.voice.watchStream(t.sessionId);
+    if (this.voice.watching() === t.sessionId) this.focus.set(t.key);
+  }
+
+  stopWatching(e: MouseEvent) {
+    e.stopPropagation();
+    this.voice.stopWatching();
+  }
+
+  viewerNames(t: Tile): string {
+    const gid = this.channel().guildId;
+    return 'Assistindo: ' + t.viewers.map((u) => this.store.nameIn(gid, u)).join(', ');
   }
 
   fullscreen(e: MouseEvent) {

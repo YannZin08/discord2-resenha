@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
-import { HELP, formatTime, parseCommand, resolveTrack, type MusicState, type Track } from './music';
+import { HELP, MAX_PLAYLIST, formatTime, isMix, parseCommand, playerError, playlistId, resolvePlaylist, resolveTrack, youtubeId, type MusicState, type Track } from './music';
 import { unfurl, type Embed } from './unfurl';
 import {
   HttpError,
@@ -17,6 +17,16 @@ import {
   toId,
   verifyPassword,
 } from './util';
+
+/** Songs in a row that fail to play before the music bot gives up. */
+const MAX_FAILURES = 3;
+/** The music bot leaves after being paused this long… */
+const MUSIC_PAUSED_MS = 5 * 60_000;
+/** …or when no listener's player starts the song within this time. */
+const MUSIC_START_MS = 45_000;
+/** A song that ran this long past its length without an "ended" report is skipped. */
+const MUSIC_END_GRACE_MS = 15_000;
+const MUSIC_CHECK_MS = 10_000;
 
 // One Durable Object holds everything: the SQLite database and every open
 // WebSocket. That keeps a team-sized server simple and fully consistent.
@@ -121,6 +131,8 @@ interface VoiceAtt {
   deaf: boolean;
   video: boolean;
   stream: boolean;
+  /** Session id of the stream this person is watching (one at a time, like Discord). */
+  watching: string | null;
 }
 interface Attachment {
   key: string;
@@ -162,6 +174,7 @@ export class Hub extends DurableObject<Env> {
   /** Active music sessions per guild (also stored in the `music` table). */
   private music = new Map<number, MusicState>();
   private musicBotId: number | null = null;
+  private musicCheckScheduled = false;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -178,6 +191,7 @@ export class Hub extends DurableObject<Env> {
       const s = JSON.parse(row.data) as MusicState;
       this.music.set(s.guildId, s);
     }
+    this.scheduleMusicCheck();
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     this.registerRoutes();
   }
@@ -643,7 +657,7 @@ export class Hub extends DurableObject<Env> {
     }
     if (withBots) {
       for (const m of this.music.values()) {
-        const v: VoiceAtt = { channelId: m.voiceChannelId, guildId: m.guildId, mute: false, deaf: true, video: false, stream: false };
+        const v: VoiceAtt = { channelId: m.voiceChannelId, guildId: m.guildId, mute: false, deaf: true, video: false, stream: false, watching: null };
         if (filter(v)) out.push(this.musicVoiceState(m.guildId, m.voiceChannelId));
       }
     }
@@ -660,6 +674,7 @@ export class Hub extends DurableObject<Env> {
       deaf: true,
       video: false,
       stream: false,
+      watching: null,
       bot: true,
     };
   }
@@ -674,6 +689,7 @@ export class Hub extends DurableObject<Env> {
       deaf: v?.deaf ?? false,
       video: v?.video ?? false,
       stream: v?.stream ?? false,
+      watching: v?.watching ?? null,
     };
   }
 
@@ -859,6 +875,7 @@ export class Hub extends DurableObject<Env> {
       deaf: !!msg.deaf,
       video: !!msg.video,
       stream: !!msg.stream,
+      watching: typeof msg.watching === 'string' && msg.watching !== att.sid ? msg.watching.slice(0, 64) : null,
     };
     ws.serializeAttachment(att);
     if (prev && prev.channelId !== channelId) this.broadcastVoiceLeave(att, prev);
@@ -1976,7 +1993,8 @@ export class Hub extends DurableObject<Env> {
       textChannelId: m.textChannelId,
       track: m.queue[m.index] ?? null,
       index: m.index,
-      upNext: m.queue.slice(m.index + 1),
+      // Sent to everyone on every change, so a 500-song playlist isn't repeated in full.
+      upNext: m.queue.slice(m.index + 1, m.index + 51),
       position: ((m.pausedAt ?? now) - m.startedAt) / 1000,
       paused: m.pausedAt != null,
       serverTime: now,
@@ -1984,10 +2002,49 @@ export class Hub extends DurableObject<Env> {
   }
 
   private saveMusic(gid: number) {
+    this.storeMusic(gid);
+    this.broadcast(this.guildMembers(gid), 'MUSIC_STATE', this.musicPayload(gid));
+    this.scheduleMusicCheck();
+  }
+
+  private storeMusic(gid: number) {
     const m = this.music.get(gid);
     if (m) this.run('INSERT INTO music (guild_id, data) VALUES (?, ?) ON CONFLICT DO UPDATE SET data = excluded.data', gid, JSON.stringify(m));
     else this.run('DELETE FROM music WHERE guild_id = ?', gid);
-    this.broadcast(this.guildMembers(gid), 'MUSIC_STATE', this.musicPayload(gid));
+  }
+
+  private scheduleMusicCheck() {
+    if (!this.music.size || this.musicCheckScheduled) return;
+    this.musicCheckScheduled = true;
+    void this.ctx.storage.setAlarm(Date.now() + MUSIC_CHECK_MS);
+  }
+
+  /**
+   * Runs every few seconds while the music bot is in a call: like a Discord music bot,
+   * it leaves when nothing is playing (paused too long, or no player could start the song),
+   * and moves on if a song ran out without anyone's player reporting the end.
+   */
+  async alarm() {
+    this.musicCheckScheduled = false;
+    const now = Date.now();
+    for (const m of [...this.music.values()]) {
+      if (m.pausedAt != null) {
+        if (now - m.pausedAt >= MUSIC_PAUSED_MS) {
+          this.stopMusic(m.guildId, `⏹️ A música ficou pausada por ${MUSIC_PAUSED_MS / 60_000} minutos, então saí do canal de voz. Use \`/tocar\` para me chamar de novo.`);
+        }
+      } else if (!m.playing) {
+        if (now - m.startedAt >= MUSIC_START_MS) {
+          this.stopMusic(
+            m.guildId,
+            `⏹️ **${m.queue[m.index]?.title ?? 'A música'}** não começou a tocar para ninguém da call, então saí do canal de voz. ` +
+              'Se o YouTube estiver bloqueado no navegador (bloqueador de anúncios, rede da empresa), libere e use `/tocar` de novo.',
+          );
+        }
+      } else if (m.duration && now - m.startedAt >= m.duration * 1000 + MUSIC_END_GRACE_MS) {
+        this.advance(m.guildId, null);
+      }
+    }
+    this.scheduleMusicCheck();
   }
 
   private musicSay(channelId: number, content: string, track?: Track) {
@@ -2011,6 +2068,8 @@ export class Hub extends DurableObject<Env> {
     m.index = index;
     m.startedAt = Date.now() + 1500; // give players a moment to load
     m.pausedAt = null;
+    m.playing = false;
+    m.duration = null;
   }
 
   private stopMusic(gid: number, message?: string) {
@@ -2031,17 +2090,19 @@ export class Hub extends DurableObject<Env> {
     }
   }
 
-  private advance(gid: number, by: string | null) {
+  /** `note` goes in the same message, so a skipped song doesn't cost a message of its own. */
+  private advance(gid: number, by: string | null, note?: string) {
     const m = this.music.get(gid);
     if (!m) return;
+    const prefix = note ? `${note}\n` : '';
     if (m.index + 1 >= m.queue.length) {
-      this.stopMusic(gid, by ? `⏹️ ${by} pulou a última música. A fila acabou.` : 'A fila acabou. Até a próxima! 🎶');
+      this.stopMusic(gid, prefix + (by ? `⏹️ ${by} pulou a última música. A fila acabou.` : 'A fila acabou. Até a próxima! 🎶'));
       return;
     }
     this.startTrack(m, m.index + 1);
     const t = m.queue[m.index];
     this.saveMusic(gid);
-    this.musicSay(m.textChannelId, `${by ? `⏭️ ${by} pulou. ` : ''}🎵 Tocando agora: **${t.title}** · pedido por <@${t.requestedBy}>`, t);
+    this.musicSay(m.textChannelId, `${prefix}${by ? `⏭️ ${by} pulou. ` : ''}🎵 Tocando agora: **${t.title}** · pedido por <@${t.requestedBy}>`, t);
   }
 
   private async musicCommand(ch: Row, uid: number, command: ReturnType<typeof parseCommand> & object) {
@@ -2069,6 +2130,15 @@ export class Hub extends DurableObject<Env> {
       if (!command.query) return say('Diga o que tocar: `/tocar <link do YouTube ou nome da música>`.');
       if (!voice) return say(`<@${uid}>, entre em um canal de voz primeiro e depois peça a música.`);
       if (m && m.voiceChannelId !== voice) return say(`Já estou tocando em outro canal de voz. Entre lá ou use \`/parar\` primeiro.`);
+      // A song link from YouTube Music carries its auto mix (list=RDAMVM…): play just the song.
+      const videoId = youtubeId(command.query);
+      const list = playlistId(command.query);
+      if (list && !(videoId && isMix(list))) {
+        const found = await resolvePlaylist(list, videoId, uid);
+        if (!('error' in found)) return this.queuePlaylist(ch, uid, voice, found);
+        // A song opened from a list we can't read (e.g. "Músicas curtidas"): play just the song.
+        if (!videoId) return say(`❌ ${found.error}`);
+      }
       const track = await resolveTrack(command.query, uid);
       if ('error' in track) return say(`❌ ${track.error}`);
       const cur = this.music.get(gid);
@@ -2077,11 +2147,7 @@ export class Hub extends DurableObject<Env> {
         this.saveMusic(gid);
         return say(`➕ Adicionada à fila (posição ${cur.queue.length - cur.index - 1}): **${track.title}**`, track);
       }
-      const state: MusicState = { guildId: gid, voiceChannelId: voice, textChannelId: ch.id, queue: [track], index: 0, startedAt: 0, pausedAt: null };
-      this.startTrack(state, 0);
-      this.music.set(gid, state);
-      this.broadcast(this.guildMembers(gid), 'VOICE_STATE_UPDATE', this.musicVoiceState(gid, voice));
-      this.saveMusic(gid);
+      this.startMusic(gid, voice, ch.id, [track]);
       return say(`🎵 Tocando agora: **${track.title}** · pedido por <@${uid}>`, track);
     }
 
@@ -2090,8 +2156,37 @@ export class Hub extends DurableObject<Env> {
     this.musicControl(gid, command.cmd, name);
   }
 
+  private startMusic(gid: number, voiceChannelId: number, textChannelId: number, queue: Track[]) {
+    const state: MusicState = { guildId: gid, voiceChannelId, textChannelId, queue, index: 0, startedAt: 0, pausedAt: null };
+    this.startTrack(state, 0);
+    this.music.set(gid, state);
+    this.broadcast(this.guildMembers(gid), 'VOICE_STATE_UPDATE', this.musicVoiceState(gid, voiceChannelId));
+    this.saveMusic(gid);
+  }
+
+  /** `/tocar <playlist or album link>`: queues its songs. */
+  private queuePlaylist(ch: Row, uid: number, voice: number, found: { title: string; tracks: Track[]; truncated: boolean }) {
+    const gid = ch.guild_id as number;
+    const say = (text: string, track?: Track) => this.musicSay(ch.id, text, track);
+    // The command waited on YouTube: someone may have started or moved the music meanwhile.
+    const cur = this.music.get(gid);
+    if (cur && cur.voiceChannelId !== voice) return say(`Já estou tocando em outro canal de voz. Entre lá ou use \`/parar\` primeiro.`);
+    const upcoming = cur ? cur.queue.length - cur.index - 1 : 0;
+    const tracks = found.tracks.slice(0, Math.max(0, MAX_PLAYLIST - upcoming));
+    if (!tracks.length) return say(`❌ A fila já tem ${upcoming} músicas, o máximo. Use \`/pular\` ou \`/parar\` antes de adicionar outra playlist.`);
+    const cut = tracks.length < found.tracks.length || found.truncated;
+    const count = `${tracks.length} ${tracks.length === 1 ? 'música' : 'músicas'}${cut ? ` (o máximo é ${MAX_PLAYLIST} na fila, então ficaram só as primeiras)` : ''}`;
+    if (cur) {
+      cur.queue.push(...tracks);
+      this.saveMusic(gid);
+      return say(`📃 Playlist **${found.title}**: adicionei ${count} à fila.`, tracks[0]);
+    }
+    this.startMusic(gid, voice, ch.id, tracks);
+    return say(`📃 Playlist **${found.title}**: ${count} na fila.\n🎵 Tocando agora: **${tracks[0].title}** · pedido por <@${uid}>`, tracks[0]);
+  }
+
   /** Shared by chat commands and the player buttons. */
-  private musicControl(gid: number, action: string, by: string, index?: number) {
+  private musicControl(gid: number, action: string, by: string, index?: number, extra: { code?: number; duration?: number } = {}) {
     const m = this.music.get(gid);
     if (!m) return;
     const now = Date.now();
@@ -2115,14 +2210,34 @@ export class Hub extends DurableObject<Env> {
         return;
       case 'stop':
         return this.stopMusic(gid, `⏹️ ${by} parou a música.`);
+      case 'playing':
+        // Proof that the song really plays somewhere, and how long it is (0 for a live video).
+        if (index === m.index && !m.playing) {
+          m.playing = true;
+          m.duration = extra.duration && extra.duration > 0 ? extra.duration : null;
+          this.storeMusic(gid);
+        }
+        return;
       case 'ended':
         // Every listener reports the end; only the first one for this track counts.
-        if (index === m.index) this.advance(gid, null);
+        if (index === m.index) {
+          m.failures = 0;
+          this.advance(gid, null);
+        }
         return;
       case 'error':
         if (index === m.index) {
-          this.musicSay(m.textChannelId, `❌ Não consegui tocar **${m.queue[m.index].title}** (o dono bloqueou fora do YouTube). Pulando.`);
-          this.advance(gid, null);
+          const failed = `❌ Pulei **${m.queue[m.index].title}**: ${playerError(extra.code)}.`;
+          m.failures = (m.failures ?? 0) + 1;
+          // One listener whose browser can't play YouTube would otherwise burn through a whole playlist.
+          if (m.failures >= MAX_FAILURES) {
+            return this.stopMusic(
+              gid,
+              `${failed}\n⏹️ ${m.failures} músicas seguidas não tocaram, então parei a música para não pular a fila inteira. ` +
+                'Se o YouTube estiver bloqueado no navegador de alguém da call (bloqueador de anúncios, rede da empresa), resolva isso e use `/tocar` de novo.',
+            );
+          }
+          this.advance(gid, null, failed);
         }
         return;
     }
@@ -2135,10 +2250,11 @@ export class Hub extends DurableObject<Env> {
     const m = this.music.get(gid);
     if (!m) throw new HttpError(400, 'Não tem nada tocando.');
     const action = String(b.action);
-    if (!['skip', 'pause', 'resume', 'stop', 'ended', 'error'].includes(action)) throw new HttpError(400, 'Ação inválida.');
+    if (!['skip', 'pause', 'resume', 'stop', 'playing', 'ended', 'error'].includes(action)) throw new HttpError(400, 'Ação inválida.');
     if (this.voiceChannelOf(c.uid, gid) !== m.voiceChannelId) throw new HttpError(403, 'Entre no canal de voz da música para controlá-la.');
     const name = this.one('SELECT display_name FROM users WHERE id = ?', c.uid)?.display_name ?? 'Alguém';
-    this.musicControl(gid, action, name, typeof b.index === 'number' ? b.index : undefined);
+    const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+    this.musicControl(gid, action, name, num(b.index), { code: num(b.code), duration: num(b.duration) });
     return this.musicPayload(gid);
   }
 

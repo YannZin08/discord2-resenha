@@ -70,7 +70,7 @@ interface Group {
                         <span class="bot-tag">BOT</span>
                       }
                       @if (v.stream) {
-                        <span class="live-badge">AO VIVO</span>
+                        <span class="live-badge" [appTip]="v.sessionId === store.sessionId() ? 'Você está transmitindo' : 'Assistir transmissão'" (click)="watchStream($event, v)">AO VIVO</span>
                       }
                       @if (v.video) {
                         <app-icon name="video" [size]="16" />
@@ -178,6 +178,14 @@ export class GuildSidebar {
   profile(e: MouseEvent, v: VoiceState) {
     e.stopPropagation();
     this.ui.openProfile(v.userId, this.guildId(), e.currentTarget as Element);
+  }
+
+  /** Clicking someone's "AO VIVO" opens their stream, like in Discord. */
+  watchStream(e: MouseEvent, v: VoiceState) {
+    e.stopPropagation();
+    if (v.channelId == null || v.sessionId === this.store.sessionId()) return;
+    void this.voice.watchStream(v.sessionId);
+    this.nav.openChannel(this.guildId(), v.channelId);
   }
 
   userMenu(e: MouseEvent, v: VoiceState) {

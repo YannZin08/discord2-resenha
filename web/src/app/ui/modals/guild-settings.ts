@@ -138,7 +138,8 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
                     <div class="bot-card-title">Música <span class="bot-tag">BOT</span></div>
                     <p>
                       Toca músicas do YouTube no canal de voz, sincronizadas para todo mundo da call. Entre num canal de voz e digite
-                      <code>/tocar</code> com o link ou o nome da música. Também tem <code>/pular</code>, <code>/pausar</code>,
+                      <code>/tocar</code> com o link ou o nome da música, ou o link de uma playlist ou álbum (YouTube ou YouTube Music).
+                      Também tem <code>/pular</code>, <code>/pausar</code>,
                       <code>/continuar</code>, <code>/fila</code> e <code>/parar</code>.
                     </p>
                   </div>

@@ -5,6 +5,7 @@ import { MicLevel, MicPipeline } from './mic';
 import { MicSettings, Prefs, StreamSettings } from './prefs';
 import { sounds } from './sounds';
 import { Store } from './store';
+import type { VoiceState } from './types';
 import { Ui } from './ui';
 
 interface MediaInfo {
@@ -133,6 +134,8 @@ export class Voice {
   /** Live mic level while in a call (for the sensitivity meter). */
   readonly micLevel = signal<MicLevel | null>(null);
   readonly pttDown = signal(false);
+  /** Session id of the stream we're watching: like Discord, one at a time and only after clicking it. */
+  readonly watching = signal<string | null>(null);
 
   readonly connectionLabel = computed(() => {
     if (!this.channelId()) return '';
@@ -152,6 +155,8 @@ export class Voice {
   private lastSpoke = new Map<number, number>();
   private streamCodec: string | null = null;
   private externalSpeakers = new Set<number>();
+  /** Everyone else in our call at the last update, to tell who joined, left or went live. */
+  private callPeers: Map<string, VoiceState> | null = null;
 
   constructor(
     private store: Store,
@@ -179,6 +184,7 @@ export class Voice {
       const channelId = this.channelId();
       const active = this.active();
       const mySid = this.store.sessionId();
+      const screen = this.localScreen();
       untracked(() => {
         if (!active || !channelId || !mySid) return;
         const wanted = new Map<string, number>();
@@ -186,7 +192,19 @@ export class Voice {
         for (const v of Object.values(states)) if (v.channelId === channelId && v.sessionId !== mySid && !v.bot) wanted.set(v.sessionId, v.userId);
         for (const [sid, uid] of wanted) if (!this.peers.has(sid)) this.createPeer(sid, uid);
         for (const sid of [...this.peers.keys()]) if (!wanted.has(sid)) this.closePeer(sid);
+        // Our stream only goes to the people watching it, so it costs no upload for the rest.
+        for (const p of this.peers.values()) {
+          const watches = states[p.sid]?.watching === mySid;
+          if (screen && watches && !p.screenSenders.length) this.addScreenTracks(p, screen);
+          else if ((!screen || !watches) && p.screenSenders.length) this.removeScreenTracks(p);
+        }
       });
+    });
+
+    effect(() => {
+      const states = this.store.voiceStates();
+      const channelId = this.active() ? this.channelId() : null;
+      untracked(() => this.onCallChange(states, channelId));
     });
 
     gateway.onOp('rtc', (msg) => this.onSignal(msg.from, msg.fromUser, msg.data));
@@ -251,16 +269,79 @@ export class Voice {
 
   toggleDeaf() {
     this.deaf.update((d) => !d);
-    this.afterAudioToggle(this.deaf());
+    this.afterAudioToggle(this.deaf(), true);
   }
 
-  private afterAudioToggle(off: boolean) {
+  private afterAudioToggle(off: boolean, deafen = false) {
     this.prefs.set('mute', this.mute());
     this.prefs.set('deaf', this.deaf());
     this.applyMute();
     this.applyOutput();
-    if (this.prefs.get('sounds')) (off ? sounds.mute : sounds.unmute)();
+    if (this.prefs.get('sounds')) (deafen ? (off ? sounds.deafen : sounds.undeafen) : off ? sounds.mute : sounds.unmute)();
     if (this.active()) this.sendState();
+  }
+
+  /** Starts watching someone's stream, joining their voice channel first if needed. */
+  async watchStream(sessionId: string) {
+    const v = this.store.voiceStates()[sessionId];
+    if (!v?.stream || v.channelId == null || sessionId === this.store.sessionId()) return;
+    if (this.channelId() !== v.channelId) await this.join(v.channelId, v.guildId);
+    if (this.channelId() !== v.channelId || !this.active() || this.watching() === sessionId) return;
+    this.watching.set(sessionId);
+    this.sendState();
+    if (this.prefs.get('sounds')) sounds.streamJoin();
+  }
+
+  stopWatching() {
+    if (!this.watching()) return;
+    this.watching.set(null);
+    this.sendState();
+    if (this.prefs.get('sounds')) sounds.streamLeave();
+  }
+
+  /** Discord-style call sounds (someone joined, left, went live…) and dropping a stream that ended. */
+  private onCallChange(states: Record<string, VoiceState>, channelId: number | null) {
+    const me = this.store.me()?.id;
+    if (!channelId || me == null) {
+      this.callPeers = null;
+      return;
+    }
+    const now = new Map<string, VoiceState>();
+    for (const v of Object.values(states)) if (v.channelId === channelId && v.userId !== me) now.set(v.sessionId, v);
+    const watched = this.watching();
+    if (watched && !now.get(watched)?.stream) {
+      this.watching.set(null);
+      this.sendState();
+    }
+    const prev = this.callPeers;
+    this.callPeers = now;
+    // The first look after joining only takes note of who is already here.
+    if (!prev || !this.prefs.get('sounds')) return;
+    const mySid = this.store.sessionId();
+    const live = !!this.localScreen();
+    let joined = false, left = false, wentLive = false, endedLive = false, viewerIn = false, viewerOut = false;
+    for (const [sid, v] of now) {
+      const before = prev.get(sid);
+      if (!before) joined = true;
+      else {
+        if (!before.stream && v.stream) wentLive = true;
+        if (before.stream && !v.stream) endedLive = true;
+        if (live && before.watching !== mySid && v.watching === mySid) viewerIn = true;
+        if (live && before.watching === mySid && v.watching !== mySid) viewerOut = true;
+      }
+    }
+    for (const [sid, v] of prev) {
+      if (now.has(sid)) continue;
+      left = true;
+      if (live && v.watching === mySid) viewerOut = true;
+    }
+    // One sound per update, the most important first.
+    if (joined) sounds.join();
+    else if (left) sounds.leave();
+    else if (wentLive) sounds.streamStart();
+    else if (endedLive) sounds.streamEnd();
+    else if (viewerIn) sounds.streamJoin();
+    else if (viewerOut) sounds.streamLeave();
   }
 
   async toggleCamera() {
@@ -302,8 +383,8 @@ export class Voice {
       video.contentHint = settings.priority === 'quality' ? 'detail' : 'motion';
       video.addEventListener('ended', () => this.stopScreen());
       this.streamCodec ??= await pickStreamCodec();
+      // Viewers get the tracks once they click "Assistir transmissão" (see the constructor).
       this.localScreen.set(stream);
-      for (const p of this.peers.values()) this.addScreenTracks(p, stream);
       this.broadcastMedia();
       this.sendState();
     } catch (e) {
@@ -346,6 +427,11 @@ export class Voice {
       }
       p.screenSenders.push(t.sender);
     }
+  }
+
+  private removeScreenTracks(p: Peer) {
+    for (const s of p.screenSenders) p.pc.removeTrack(s);
+    p.screenSenders = [];
   }
 
   /** Full resolution, high bitrate and no downscaling: the stream should always look as sharp as possible. */
@@ -469,6 +555,7 @@ export class Voice {
       deaf: this.deaf(),
       video: !!this.localCamera(),
       stream: !!this.localScreen(),
+      watching: this.watching(),
     });
   }
 
@@ -592,8 +679,6 @@ export class Voice {
     else pc.addTransceiver('audio', { direction: 'recvonly' });
     const cam = this.localCamera();
     if (cam) for (const t of cam.getVideoTracks()) peer.cameraSenders.push(pc.addTrack(t, cam));
-    const screen = this.localScreen();
-    if (screen) this.addScreenTracks(peer, screen);
 
     pc.onnegotiationneeded = async () => {
       try {
@@ -755,16 +840,15 @@ export class Voice {
     const screen = this.localScreen();
     if (!screen) return;
     screen.getTracks().forEach((t) => t.stop());
-    for (const p of this.peers.values()) {
-      for (const s of p.screenSenders) p.pc.removeTrack(s);
-      p.screenSenders = [];
-    }
+    for (const p of this.peers.values()) this.removeScreenTracks(p);
     this.localScreen.set(null);
     this.broadcastMedia();
     if (this.active()) this.sendState();
   }
 
   private teardown() {
+    // First, so that stopping the camera / stream below doesn't announce us in the channel again.
+    this.active.set(false);
     for (const sid of [...this.peers.keys()]) this.closePeer(sid);
     this.stopCamera();
     this.stopScreen();
@@ -777,7 +861,8 @@ export class Voice {
     this.lastSpoke.clear();
     this.externalSpeakers.clear();
     this.speaking.set(new Set());
-    this.active.set(false);
+    this.watching.set(null);
+    this.callPeers = null;
     this.channelId.set(null);
     this.guildId.set(null);
   }

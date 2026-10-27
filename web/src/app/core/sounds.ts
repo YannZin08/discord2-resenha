@@ -37,6 +37,14 @@ export const sounds = {
   leave: () => tone([783.99, 659.25, 523.25], 0.07, 0.07),
   mute: () => tone([440, 330], 0.05, 0.05, 'triangle'),
   unmute: () => tone([330, 440], 0.05, 0.05, 'triangle'),
+  deafen: () => tone([392, 293.66, 220], 0.05, 0.05, 'triangle'),
+  undeafen: () => tone([220, 293.66, 392], 0.05, 0.05, 'triangle'),
+  /** Someone in the call went live / stopped streaming. */
+  streamStart: () => tone([587.33, 880, 1174.66], 0.06, 0.06, 'triangle'),
+  streamEnd: () => tone([1174.66, 880, 587.33], 0.06, 0.06, 'triangle'),
+  /** You started / stopped watching a stream, or someone did on yours. */
+  streamJoin: () => tone([987.77, 1318.5], 0.06, 0.05),
+  streamLeave: () => tone([1318.5, 987.77], 0.06, 0.05),
   ring: () => tone([659.25, 783.99, 659.25, 783.99], 0.12, 0.07),
   unlock: () => audio(),
 };

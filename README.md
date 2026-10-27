@@ -16,8 +16,9 @@ Roda inteiro na Cloudflare (mesma stack do AcessosVirtual):
 - Indicador de "digitando", não lidas, contador de menções, notificações na área de trabalho e sons.
 - Amigos (pedidos, aceitar, bloquear), mensagens diretas e grupos de até 10 pessoas.
 - Voz e vídeo por WebRTC: canais de voz, chamadas na DM com toque, câmera, compartilhamento de tela com áudio, indicador de quem está falando, volume por pessoa, escolha de microfone, alto-falante e câmera.
+- Sons de chamada como os do Discord: alguém entrou ou saiu da call, começou ou parou de transmitir, entrou ou saiu da sua transmissão, e silenciar/ensurdecer (dá para desligar os sons nas configurações).
 - Configurações de voz como as do Discord: volume de entrada e saída, teste de microfone (reproduz sua voz), modo **Detecção de voz** (sensibilidade automática ou manual com medidor) ou **Pressione para falar** (atalho e atraso para soltar), **supressão de ruído** Avançada (IA, RNNoise), Padrão (do navegador) ou Nenhuma, cancelamento de eco e controle automático de ganho.
-- Transmissão de tela na qualidade máxima por padrão: resolução da tela até 4K, 60 FPS, sem reduzir a resolução, bitrate alto (~25 Mbps em 4K) e codec com aceleração de hardware quando houver. Dá para mudar em "Transmitir tela" ou em Configurações → Transmissão, inclusive durante a transmissão. Quem assiste vê a resolução recebida (ex.: "AO VIVO 4K").
+- Transmissão de tela na qualidade máxima por padrão: resolução da tela até 4K, 60 FPS, sem reduzir a resolução, bitrate alto (~25 Mbps em 4K) e codec com aceleração de hardware quando houver. Dá para mudar em "Transmitir tela" ou em Configurações → Transmissão, inclusive durante a transmissão. Quem assiste vê a resolução recebida (ex.: "AO VIVO 4K"). Como no Discord, a transmissão só chega para quem clica em **Assistir transmissão** (no quadro dela, no "AO VIVO" da lista do canal ou no clique direito na pessoa) e para com **Sair da transmissão**; o quadro mostra quantas pessoas estão assistindo.
 - Temas: Claro, Cinza, Escuro, Meia-noite e temas coloridos (Aurora, Pôr do sol, Floresta, Oceano, Lua carmesim, Neon, Algodão-doce), além do tamanho da fonte do chat. Fica em Configurações → Aparência, salvo por dispositivo.
 - Ctrl+K para pular para qualquer canal ou conversa; menus de clique direito em quase tudo; layout para celular; instalável como app (PWA).
 
@@ -25,7 +26,7 @@ Roda inteiro na Cloudflare (mesma stack do AcessosVirtual):
 
 Em Configurações do servidor → **Bots**:
 
-- **Música** (embutido): entre num canal de voz e digite `/tocar <link do YouTube ou nome da música>`. Também tem `/pular`, `/pausar`, `/continuar`, `/fila`, `/tocando`, `/parar` e `/ajuda` (com `/` ou `!`). Quem está no canal vê um mini-player com a música sincronizada pelo relógio do servidor, usando o player oficial do YouTube; o bot sai sozinho quando todo mundo sai do canal.
+- **Música** (embutido): entre num canal de voz e digite `/tocar <link do YouTube ou nome da música>`. Links de playlist ou álbum (YouTube ou YouTube Music, públicas ou não listadas) põem até 500 músicas na fila; se o link aponta para uma música dentro da playlist, a fila começa nela. Link de música com mix automático (`list=RD…`) ou de uma lista privada (como as "Músicas curtidas") toca só a música. Também tem `/pular`, `/pausar`, `/continuar`, `/fila`, `/tocando`, `/parar` e `/ajuda` (com `/` ou `!`). Quem está no canal vê um mini-player com a música sincronizada pelo relógio do servidor, usando o player oficial do YouTube; o bot sai sozinho quando todo mundo sai do canal, quando a fila acaba, quando a música fica pausada por 5 minutos ou quando ela não começa a tocar para ninguém da call.
 - **Bots personalizados**: "Criar bot" gera um token. Seu programa usa o cabeçalho `Authorization: Bot <token>` na API REST (`/api/...`, as mesmas rotas do app) e no gateway (`wss://.../api/gateway`, eventos como `MESSAGE_CREATE`). Exemplo pronto, sem dependências:
 
 ```bash
@@ -86,7 +87,7 @@ Ou, com outro provedor de TURN, use `TURN_URLS` (URLs `turn:`/`turns:` separadas
 
 ## Limites conhecidos
 
-- A voz é em malha (cada pessoa conecta com cada pessoa): fica boa até umas 8 pessoas por canal de voz. Na transmissão, quem transmite envia uma cópia para cada pessoa assistindo: 4K a 60 FPS pede ~25 Mbps de upload por espectador, e o navegador reduz automaticamente se a internet não aguentar.
+- A voz é em malha (cada pessoa conecta com cada pessoa): fica boa até umas 8 pessoas por canal de voz. Na transmissão, quem transmite envia uma cópia para cada pessoa que clicou em assistir (quem não assiste não gasta nada): 4K a 60 FPS pede ~25 Mbps de upload por espectador, e o navegador reduz automaticamente se a internet não aguentar.
 - Os arquivos ficam no SQLite do Durable Object: no plano gratuito são uns 5 GB no total (somando mensagens e arquivos). Se crescer, dá para mover os arquivos para o R2.
 - Permissões simplificadas: todo membro vê todos os canais; quem tem cargo de administrador (ou o dono) gerencia o servidor.
 - Não há app nativo para celular: no celular, use pelo navegador ou "Adicionar à tela inicial".

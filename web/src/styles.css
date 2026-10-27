@@ -3041,6 +3041,48 @@ app-voice-stage {
 .tile:hover .tile-fs {
   display: flex;
 }
+/* A stream you aren't watching yet: Discord-style invitation to join it. */
+.stream-invite {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.tile-leave-stream {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: none;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+}
+.tile-leave-stream:hover {
+  background: var(--red);
+}
+.tile:hover .tile-leave-stream {
+  display: flex;
+}
+@media (hover: none) {
+  .tile-leave-stream {
+    display: flex;
+  }
+}
+.voice-user .live-badge {
+  cursor: pointer;
+}
+.stream-viewers {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
 .stage-controls {
   display: flex;
   justify-content: center;

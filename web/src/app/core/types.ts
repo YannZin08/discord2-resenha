@@ -164,6 +164,8 @@ export interface VoiceState {
   deaf: boolean;
   video: boolean;
   stream: boolean;
+  /** Session id of the stream this person is watching. */
+  watching?: string | null;
   leftChannelId?: number;
   bot?: boolean;
 }

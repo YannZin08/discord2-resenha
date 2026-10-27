@@ -125,6 +125,20 @@ export function userMenuItems(
       nav.openChannel(null, ch.id);
       return ch;
     };
+    const live = Object.values(store.voiceStates()).find((v) => v.userId === userId && v.stream && v.channelId != null);
+    if (live) {
+      items.push(
+        voice.watching() === live.sessionId
+          ? { label: 'Sair da transmissão', action: () => voice.stopWatching() }
+          : {
+              label: 'Assistir transmissão',
+              action: () => {
+                void voice.watchStream(live.sessionId);
+                nav.openChannel(live.guildId, live.channelId!);
+              },
+            },
+      );
+    }
     items.push(
       { label: 'Mensagem', action: () => void openDm().catch((e) => ui.error(e)) },
       {
