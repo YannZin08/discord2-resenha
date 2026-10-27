@@ -7,7 +7,7 @@ import { Session } from '../core/session';
 import { Store } from '../core/store';
 import type { Channel, Message } from '../core/types';
 import { MenuItem, Ui } from '../core/ui';
-import { defaultAvatarColor, formatLongDate, uid } from '../core/util';
+import { bannerImage, defaultAvatarColor, formatLongDate, uid } from '../core/util';
 import { Avatar, Icon } from './shared';
 
 @Component({
@@ -126,7 +126,12 @@ export class ContextMenu {
       @if (user(); as u) {
         <div class="menu-backdrop" (mousedown)="ui.closeMenus()"></div>
         <div class="profile-popout" #el [style.left.px]="pos().x" [style.top.px]="pos().y">
-          <div class="profile-banner" [style.background]="u.bannerColor || bannerFallback()"></div>
+          <div
+            class="profile-banner"
+            [class.has-image]="!!u.banner"
+            [style.background-color]="u.bannerColor || bannerFallback()"
+            [style.background-image]="banner(u)"
+          ></div>
           <div class="profile-avatar">
             <app-avatar [user]="u" [size]="80" [status]="store.statusOf(u.id)" />
           </div>
@@ -202,6 +207,7 @@ export class ProfilePopout {
     return p ? this.store.users()[p.userId] : null;
   });
   readonly bannerFallback = computed(() => defaultAvatarColor(this.user()?.id ?? 0));
+  readonly banner = bannerImage;
   readonly admin = computed(() => this.store.isAdmin(this.ui.profile()?.guildId));
   readonly memberRoles = computed(() => {
     const p = this.ui.profile();

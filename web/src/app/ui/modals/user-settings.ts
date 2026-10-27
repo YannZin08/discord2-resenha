@@ -6,12 +6,12 @@ import { Session } from '../../core/session';
 import { Store } from '../../core/store';
 import { Ui } from '../../core/ui';
 import { Voice } from '../../core/voice';
-import { avatarUrl, defaultAvatarColor } from '../../core/util';
+import { avatarUrl, bannerImage, defaultAvatarColor } from '../../core/util';
 import { Avatar, Icon } from '../shared';
 import { confirmDialog, promptDialog } from './dialogs';
 import { StreamOptions } from './go-live';
 import { VoiceSettings } from './voice-settings';
-import { pickImage, squareImage } from './image';
+import { MAX_PROFILE_IMAGE, bannerImage as cropBanner, pickImage, squareImage } from './image';
 import { StreamSettings } from '../../core/prefs';
 import { THEMES } from '../../core/themes';
 
@@ -45,7 +45,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
               @case ('account') {
                 <h2>Minha conta</h2>
                 <div class="account-card">
-                  <div class="account-banner" [style.background]="me.bannerColor || fallbackBanner()"></div>
+                  <div class="account-banner" [style.background-color]="me.bannerColor || fallbackBanner()" [style.background-image]="banner(me)"></div>
                   <div class="account-head">
                     <app-avatar [user]="me" [size]="80" [status]="store.statusOf(me.id)" />
                     <div class="account-name">{{ me.displayName }}</div>
@@ -90,14 +90,29 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                 <div class="profile-editor">
                   <div class="profile-editor-fields">
                     <label class="field-label">Avatar</label>
+                    <p class="hint">PNG, JPG ou GIF animado, até 10 MB.</p>
                     <div class="row-gap">
-                      <button class="btn btn-brand" (click)="changeAvatar()">Mudar avatar</button>
+                      <button class="btn btn-brand" [disabled]="!!uploading()" (click)="changeAvatar()">
+                        {{ uploading() === 'avatar' ? 'Enviando...' : 'Mudar avatar' }}
+                      </button>
                       @if (me.avatar) {
                         <button class="btn btn-link" (click)="removeAvatar()">Remover avatar</button>
                       }
                     </div>
                     <div class="settings-divider"></div>
+                    <label class="field-label">Banner do perfil</label>
+                    <p class="hint">Imagem ou GIF animado, até 10 MB. Tamanho ideal: 680 × 240.</p>
+                    <div class="row-gap">
+                      <button class="btn btn-brand" [disabled]="!!uploading()" (click)="changeBanner()">
+                        {{ uploading() === 'banner' ? 'Enviando...' : 'Mudar banner' }}
+                      </button>
+                      @if (me.banner) {
+                        <button class="btn btn-link" (click)="removeBanner()">Remover banner</button>
+                      }
+                    </div>
+                    <div class="settings-divider"></div>
                     <label class="field-label">Cor do banner</label>
+                    <p class="hint">{{ me.banner ? 'Aparece se você remover a imagem do banner.' : 'Aparece quando o banner não tem imagem.' }}</p>
                     <div class="color-swatches">
                       @for (c of banners; track c) {
                         <button class="swatch big" [style.background]="c" [class.active]="me.bannerColor === c" (click)="setBanner(c)"></button>
@@ -115,7 +130,12 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                   <div class="profile-preview">
                     <label class="field-label">Prévia</label>
                     <div class="profile-popout static">
-                      <div class="profile-banner" [style.background]="me.bannerColor || fallbackBanner()"></div>
+                      <div
+                        class="profile-banner"
+                        [class.has-image]="!!me.banner"
+                        [style.background-color]="me.bannerColor || fallbackBanner()"
+                        [style.background-image]="banner(me)"
+                      ></div>
                       <div class="profile-avatar"><app-avatar [user]="me" [size]="80" [status]="store.statusOf(me.id)" /></div>
                       <div class="profile-body">
                         <div class="profile-names">
@@ -242,6 +262,7 @@ export class UserSettings {
   readonly colorThemes = THEMES.filter((t) => t.group === 'color');
   readonly section = signal<Section>('account');
   readonly pwError = signal('');
+  readonly uploading = signal<'avatar' | 'banner' | null>(null);
   readonly permission = signal('Notification' in window ? Notification.permission : 'denied');
   readonly fallbackBanner = computed(() => defaultAvatarColor(this.store.me()?.id ?? 0));
   about = this.store.me()?.about ?? '';
@@ -250,6 +271,7 @@ export class UserSettings {
   pwConfirm = '';
 
   avatar = avatarUrl;
+  banner = bannerImage;
 
   close() {
     this.ui.close();
@@ -294,20 +316,42 @@ export class UserSettings {
     }
   }
 
-  async changeAvatar() {
-    const f = await pickImage();
-    if (!f) return;
-    try {
-      const blob = await squareImage(f, 256);
-      const up = await this.api.upload(blob, f.type === 'image/gif' ? 'avatar.gif' : 'avatar.png');
-      await this.patch({ avatar: up.key });
-    } catch (e) {
-      this.ui.error(e);
-    }
+  changeAvatar() {
+    return this.uploadProfileImage('avatar', (f) => squareImage(f, 256));
   }
 
   removeAvatar() {
     this.patch({ avatar: null }).catch((e) => this.ui.error(e));
+  }
+
+  changeBanner() {
+    return this.uploadProfileImage('banner', cropBanner);
+  }
+
+  removeBanner() {
+    this.patch({ banner: null }).catch((e) => this.ui.error(e));
+  }
+
+  /** Avatar or banner: GIFs go up as they are, so they stay animated. */
+  private async uploadProfileImage(field: 'avatar' | 'banner', prepare: (f: File) => Promise<Blob>) {
+    const f = await pickImage();
+    if (!f) return;
+    const what = field === 'avatar' ? 'O avatar' : 'O banner';
+    if (f.type === 'image/gif' && f.size > MAX_PROFILE_IMAGE) {
+      this.ui.toast(`${what} pode ter até 10 MB e esse GIF tem ${(f.size / 1024 / 1024).toFixed(1)} MB. Escolha um GIF menor.`, 'error');
+      return;
+    }
+    this.uploading.set(field);
+    try {
+      const blob = await prepare(f);
+      const ext = blob.type === 'image/gif' ? 'gif' : blob.type === 'image/webp' ? 'webp' : 'png';
+      const up = await this.api.upload(blob, `${field}.${ext}`);
+      await this.patch({ [field]: up.key });
+    } catch (e) {
+      this.ui.error(e);
+    } finally {
+      this.uploading.set(null);
+    }
   }
 
   setBanner(c: string) {

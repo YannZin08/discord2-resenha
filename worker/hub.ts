@@ -33,6 +33,8 @@ const MUSIC_CHECK_MS = 10_000;
 
 const COOKIE = 'rs_session';
 const MAX_UPLOAD = 25 * 1024 * 1024;
+/** Avatars and profile banners (GIFs included), like Discord's limit. */
+const MAX_PROFILE_IMAGE = 10 * 1024 * 1024;
 const MAX_MESSAGE = 4000;
 // Files live in SQLite, split in chunks below the 2 MB value limit.
 const CHUNK = 1024 * 1024;
@@ -113,6 +115,7 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 const MIGRATIONS = [
   'ALTER TABLE users ADD COLUMN bot INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE users ADD COLUMN bot_owner INTEGER',
+  'ALTER TABLE users ADD COLUMN banner TEXT',
 ];
 
 const MUSIC_SID = (gid: number) => `bot:music:${gid}`;
@@ -372,6 +375,7 @@ export class Hub extends DurableObject<Env> {
       username: u.username as string,
       displayName: u.display_name as string,
       avatar: u.avatar as string | null,
+      banner: (u.banner as string | null) ?? null,
       bannerColor: u.banner_color as string | null,
       about: u.about as string,
       customStatus: u.custom_status as string,
@@ -590,6 +594,15 @@ export class Hub extends DurableObject<Env> {
     if (!up) throw new HttpError(400, 'Arquivo não encontrado.');
     if (imageOnly && !String(up.mime).startsWith('image/')) throw new HttpError(400, 'O arquivo precisa ser uma imagem.');
     return key;
+  }
+
+  private profileImage(key: unknown, uid: number, what: string): string {
+    const k = this.ownedUpload(key, uid, true);
+    const size = Number(this.one('SELECT size FROM uploads WHERE key = ?', k)?.size ?? 0);
+    if (size > MAX_PROFILE_IMAGE) {
+      throw new HttpError(413, `${what} pode ter até 10 MB e esse arquivo tem ${(size / 1024 / 1024).toFixed(1)} MB. Escolha uma imagem ou GIF menor.`);
+    }
+    return k;
   }
 
   private blockedBetween(a: number, b: number): boolean {
@@ -964,7 +977,8 @@ export class Hub extends DurableObject<Env> {
       next.username = username;
     }
     if (b.displayName !== undefined) next.display_name = str(b.displayName, 'Nome de exibição', 1, 32);
-    if (b.avatar !== undefined) next.avatar = b.avatar === null ? null : this.ownedUpload(b.avatar, c.uid, true);
+    if (b.avatar !== undefined) next.avatar = b.avatar === null ? null : this.profileImage(b.avatar, c.uid, 'O avatar');
+    if (b.banner !== undefined) next.banner = b.banner === null ? null : this.profileImage(b.banner, c.uid, 'O banner');
     if (b.bannerColor !== undefined) next.banner_color = color(b.bannerColor);
     if (b.about !== undefined) next.about = str(b.about, 'Sobre mim', 0, 190);
     if (b.customStatus !== undefined) next.custom_status = str(b.customStatus, 'Status personalizado', 0, 128);
@@ -973,17 +987,18 @@ export class Hub extends DurableObject<Env> {
       next.status = b.status;
     }
     this.run(
-      'UPDATE users SET username = ?, display_name = ?, avatar = ?, banner_color = ?, about = ?, custom_status = ?, status = ? WHERE id = ?',
+      'UPDATE users SET username = ?, display_name = ?, avatar = ?, banner = ?, banner_color = ?, about = ?, custom_status = ?, status = ? WHERE id = ?',
       next.username,
       next.display_name,
       next.avatar,
+      next.banner ?? null,
       next.banner_color,
       next.about,
       next.custom_status,
       next.status,
       c.uid,
     );
-    if (u.avatar !== next.avatar) this.releaseFiles([u.avatar]);
+    this.releaseFiles([u.avatar !== next.avatar ? u.avatar : null, u.banner !== next.banner ? u.banner : null]);
     const pub = this.pub(next);
     this.broadcast(
       this.relatedUserIds(c.uid).filter((id) => id !== c.uid),
@@ -1098,12 +1113,12 @@ export class Hub extends DurableObject<Env> {
     return new Response(body, { status: partial ? 206 : 200, headers });
   }
 
-  /** Deletes stored files that nothing (message, avatar, server icon) points at any more. */
+  /** Deletes stored files that nothing (message, avatar, banner, server icon) points at any more. */
   private releaseFiles(keys: (string | null | undefined)[]) {
     for (const key of new Set(keys)) {
       if (!key) continue;
       const used =
-        this.one('SELECT 1 FROM users WHERE avatar = ?', key) ||
+        this.one('SELECT 1 FROM users WHERE avatar = ? OR banner = ?', key, key) ||
         this.one('SELECT 1 FROM guilds WHERE icon = ?', key) ||
         this.one("SELECT 1 FROM messages WHERE attachments LIKE ? ESCAPE '\\'", `%${key}%`);
       if (used) continue;

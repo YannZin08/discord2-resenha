@@ -10,7 +10,7 @@ Roda inteiro na Cloudflare (mesma stack do AcessosVirtual):
 
 ## O que tem
 
-- Contas (usuário + senha), perfil com avatar, cor do banner, "sobre mim", status (disponível, ausente, não perturbar, invisível) e status personalizado.
+- Contas (usuário + senha), perfil com avatar e banner (imagem ou GIF animado, até 10 MB cada; sem imagem, o banner usa a cor escolhida), "sobre mim", status (disponível, ausente, não perturbar, invisível) e status personalizado.
 - Servidores com ícone, convites por link, categorias, canais de texto e voz, cargos com cor (com opção de exibir separadamente e de administrador), apelidos, expulsar, banir, transferir posse.
 - Mensagens com markdown do Discord (`**negrito**`, `*itálico*`, `__sublinhado__`, `~~riscado~~`, `||spoiler||`, `` `código` ``, blocos de código, `> citação`, títulos, listas), menções `@usuário`, `@everyone`, `#canal`, emojis (`:joy:`), respostas, edição (seta ↑ edita a última), exclusão, reações, mensagens fixadas, busca, prévia de links e vídeos do YouTube, anexos de até 25 MB (arrastar e soltar ou colar imagem).
 - Indicador de "digitando", não lidas, contador de menções, notificações na área de trabalho e sons.

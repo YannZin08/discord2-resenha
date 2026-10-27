@@ -3287,8 +3287,20 @@ app-voice-stage {
   position: relative;
   animation: none;
 }
+.profile-banner,
+.account-banner {
+  background-size: cover;
+  background-position: center;
+}
 .profile-banner {
   height: 60px;
+}
+/* With a picture the banner is taller (17:6 like Discord) and the avatar overlaps its bottom. */
+.profile-banner.has-image {
+  height: 106px;
+}
+.profile-banner.has-image + .profile-avatar {
+  top: 62px;
 }
 .profile-avatar {
   position: absolute;

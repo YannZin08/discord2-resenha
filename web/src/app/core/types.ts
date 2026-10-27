@@ -8,6 +8,8 @@ export interface User {
   username: string;
   displayName: string;
   avatar: string | null;
+  /** Profile banner image (can be an animated GIF); bannerColor shows when there's none. */
+  banner?: string | null;
   bannerColor: string | null;
   about: string;
   customStatus: string;

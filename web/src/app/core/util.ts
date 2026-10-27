@@ -16,6 +16,11 @@ export function avatarUrl(u: User | null | undefined): string | null {
   return u?.avatar ? fileUrl(u.avatar, 'avatar') : null;
 }
 
+/** CSS background-image for a profile banner, or null to show the banner color. */
+export function bannerImage(u: User | null | undefined): string | null {
+  return u?.banner ? `url("${fileUrl(u.banner, 'banner')}")` : null;
+}
+
 export function initials(name: string): string {
   const words = name.trim().split(/\s+/).filter(Boolean);
   if (!words.length) return '?';
