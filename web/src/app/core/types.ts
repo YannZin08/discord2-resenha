@@ -11,6 +11,9 @@ export interface User {
   /** Profile banner image (can be an animated GIF); bannerColor shows when there's none. */
   banner?: string | null;
   bannerColor: string | null;
+  pronouns?: string;
+  /** Profile theme: the card is painted with a gradient from the first to the second color. */
+  themeColors?: [string, string] | null;
   about: string;
   customStatus: string;
   createdAt: number;

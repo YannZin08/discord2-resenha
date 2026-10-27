@@ -1043,6 +1043,68 @@ select.input {
   border-radius: 9px;
   pointer-events: none;
 }
+/* Someone is in a call in this server (Discord's speaker on the server icon). */
+.rail-voice {
+  position: absolute;
+  right: 10px;
+  bottom: -2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 0 0 3px var(--bg-tertiary);
+  pointer-events: none;
+  animation: pop 0.35s var(--spring);
+}
+.rail-voice.top {
+  top: -2px;
+  bottom: auto;
+}
+/* Tooltip with a title and who's in a call (server list). */
+.tooltip-rich {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+}
+.tip-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--header-primary);
+}
+.tip-voice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--interactive-normal);
+}
+.tip-faces {
+  display: flex;
+}
+.tip-face {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 0 0 2px var(--bg-floating);
+}
+.tip-face + .tip-face {
+  margin-left: -4px;
+}
+.tip-more {
+  background: var(--bg-tertiary);
+  color: var(--text-normal);
+}
 .rail-sep {
   width: 32px;
   height: 2px;
@@ -3277,15 +3339,37 @@ app-voice-stage {
   z-index: 401;
   width: 300px;
   border-radius: 8px;
+  box-shadow: var(--elevation-high);
+}
+app-profile-card {
+  display: block;
+}
+.profile-card {
+  position: relative;
+  width: 300px;
+  border-radius: 8px;
   overflow: hidden;
   background: var(--bg-popout);
-  box-shadow: var(--elevation-high);
-  animation: fade-in 0.1s ease;
   --status-ring: var(--bg-popout);
+  --avatar-top: 16px;
 }
-.profile-popout.static {
-  position: relative;
-  animation: none;
+/* With a picture the banner is taller (17:6 like Discord) and the avatar overlaps its bottom. */
+.profile-card.banner-image {
+  --avatar-top: 62px;
+}
+/* Profile theme: the whole card in a gradient, the text on a see-through panel. */
+.profile-card.themed {
+  background: linear-gradient(180deg, var(--profile-1), var(--profile-2));
+  --status-ring: var(--profile-1);
+}
+.profile-card.themed .profile-avatar {
+  background: var(--profile-1);
+}
+.profile-card.themed .profile-body {
+  background: color-mix(in srgb, var(--bg-floating) 78%, transparent);
+}
+.profile-preview-card .profile-card {
+  box-shadow: var(--elevation-high);
 }
 .profile-banner,
 .account-banner {
@@ -3295,26 +3379,218 @@ app-voice-stage {
 .profile-banner {
   height: 60px;
 }
-/* With a picture the banner is taller (17:6 like Discord) and the avatar overlaps its bottom. */
 .profile-banner.has-image {
   height: 106px;
 }
-.profile-banner.has-image + .profile-avatar {
-  top: 62px;
-}
 .profile-avatar {
   position: absolute;
-  top: 16px;
+  top: var(--avatar-top);
   left: 16px;
   padding: 6px;
   border-radius: 50%;
   background: var(--bg-popout);
+}
+.profile-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+}
+.profile-action {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  transition:
+    background-color 0.15s ease,
+    transform 0.3s var(--spring);
+}
+.profile-action:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+.profile-action:active {
+  transform: scale(0.88);
+  transition-duration: 0.06s;
+}
+/* Custom status as a thought bubble next to the avatar, like Discord's. */
+.profile-bubble {
+  position: absolute;
+  left: 110px;
+  top: calc(var(--avatar-top) + 24px);
+  max-width: 174px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  background: var(--bg-floating);
+  color: var(--text-normal);
+  font-size: 13px;
+  line-height: 1.3;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.profile-bubble span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.profile-bubble::before,
+.profile-bubble::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: var(--bg-floating);
+}
+.profile-bubble::before {
+  left: -3px;
+  bottom: -1px;
+  width: 9px;
+  height: 9px;
+}
+.profile-bubble::after {
+  left: -9px;
+  bottom: -6px;
+  width: 5px;
+  height: 5px;
 }
 .profile-body {
   margin: 52px 16px 16px;
   padding: 12px;
   border-radius: 8px;
   background: var(--bg-floating);
+}
+.profile-body .profile-section {
+  margin: 12px 0 0;
+}
+.pn-dot {
+  margin: 0 4px;
+}
+.profile-badges {
+  display: inline-flex;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 2px 4px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+}
+.profile-badge {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+.profile-badge:hover {
+  background: var(--bg-mod-hover);
+}
+.profile-mutuals {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: left;
+}
+.profile-mutuals:hover {
+  color: var(--text-normal);
+  text-decoration: underline;
+}
+.mutual-avatars {
+  display: inline-flex;
+}
+.mutual-avatars .avatar-host + .avatar-host {
+  margin-left: -6px;
+}
+.mutual-avatars .avatar {
+  box-shadow: 0 0 0 2px var(--bg-floating);
+}
+.profile-call {
+  margin-top: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+}
+.pc-head {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--header-primary);
+}
+.pc-body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pc-avatars {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 2px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  flex-shrink: 0;
+}
+.pc-avatars:has(> :only-child) {
+  display: flex;
+}
+.pc-text {
+  min-width: 0;
+}
+.pc-channel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--header-primary);
+}
+.pc-channel span:not(.live-badge) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pc-place {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.pc-btn {
+  width: 100%;
+  height: 32px;
+  margin-top: 10px;
+}
+.profile-dates {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+.profile-dates span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.profile-dates small {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.theme-pickers {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+.theme-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 .pn-display {
   font-size: 20px;
@@ -4935,7 +5211,7 @@ app-voice-stage {
 .tooltip {
   animation: tooltip-in 0.12s var(--ease-out);
 }
-.profile-popout:not(.static) {
+.profile-popout {
   animation: popout-in 0.18s var(--ease-out);
 }
 .message.fresh {

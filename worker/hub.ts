@@ -116,7 +116,12 @@ const MIGRATIONS = [
   'ALTER TABLE users ADD COLUMN bot INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE users ADD COLUMN bot_owner INTEGER',
   'ALTER TABLE users ADD COLUMN banner TEXT',
+  "ALTER TABLE users ADD COLUMN pronouns TEXT NOT NULL DEFAULT ''",
+  'ALTER TABLE users ADD COLUMN theme_colors TEXT',
 ];
+
+/** The first accounts of the app get the "Pioneiro" badge. */
+const PIONEER_ACCOUNTS = 100;
 
 const MUSIC_SID = (gid: number) => `bot:music:${gid}`;
 
@@ -235,6 +240,7 @@ export class Hub extends DurableObject<Env> {
     r('GET', '/api/auth/me', (c) => this.selfUser(c.uid));
     r('PATCH', '/api/users/@me', (c) => this.updateMe(c));
     r('POST', '/api/users/@me/password', (c) => this.changePassword(c));
+    r('GET', '/api/users/:userId/profile', (c) => this.userProfile(c));
     r('POST', '/api/upload', (c) => this.upload(c));
     // File keys are random 128-bit ids, so links work like Discord's CDN links.
     for (const m of ['GET', 'HEAD']) {
@@ -377,6 +383,8 @@ export class Hub extends DurableObject<Env> {
       avatar: u.avatar as string | null,
       banner: (u.banner as string | null) ?? null,
       bannerColor: u.banner_color as string | null,
+      pronouns: (u.pronouns as string | null) ?? '',
+      themeColors: u.theme_colors ? (JSON.parse(u.theme_colors as string) as [string, string]) : null,
       about: u.about as string,
       customStatus: u.custom_status as string,
       createdAt: u.created_at as number,
@@ -981,19 +989,30 @@ export class Hub extends DurableObject<Env> {
     if (b.banner !== undefined) next.banner = b.banner === null ? null : this.profileImage(b.banner, c.uid, 'O banner');
     if (b.bannerColor !== undefined) next.banner_color = color(b.bannerColor);
     if (b.about !== undefined) next.about = str(b.about, 'Sobre mim', 0, 190);
+    if (b.pronouns !== undefined) next.pronouns = str(b.pronouns, 'Pronomes', 0, 40);
+    if (b.themeColors !== undefined) {
+      if (b.themeColors === null) next.theme_colors = null;
+      const colors = Array.isArray(b.themeColors) && b.themeColors.length === 2 ? b.themeColors.map((x: unknown) => color(x)) : [];
+      if (colors.length !== 2 || colors.some((x: string | null) => !x)) {
+        throw new HttpError(400, 'O tema do perfil precisa de duas cores: a principal e a de destaque.');
+      }
+      next.theme_colors = JSON.stringify(colors);
+    }
     if (b.customStatus !== undefined) next.custom_status = str(b.customStatus, 'Status personalizado', 0, 128);
     if (b.status !== undefined) {
       if (!['online', 'idle', 'dnd', 'invisible'].includes(b.status)) throw new HttpError(400, 'Status inválido.');
       next.status = b.status;
     }
     this.run(
-      'UPDATE users SET username = ?, display_name = ?, avatar = ?, banner = ?, banner_color = ?, about = ?, custom_status = ?, status = ? WHERE id = ?',
+      'UPDATE users SET username = ?, display_name = ?, avatar = ?, banner = ?, banner_color = ?, about = ?, pronouns = ?, theme_colors = ?, custom_status = ?, status = ? WHERE id = ?',
       next.username,
       next.display_name,
       next.avatar,
       next.banner ?? null,
       next.banner_color,
       next.about,
+      next.pronouns ?? '',
+      next.theme_colors ?? null,
       next.custom_status,
       next.status,
       c.uid,
@@ -1009,6 +1028,35 @@ export class Hub extends DurableObject<Env> {
     this.broadcast([c.uid], 'USER_UPDATE', self);
     if (next.status !== u.status) this.broadcastPresence(c.uid);
     return self;
+  }
+
+  /** What the profile card loads on open: friends and servers in common, and badges. */
+  private userProfile(c: Ctx) {
+    const id = toId(c.params.userId);
+    const u = this.one('SELECT * FROM users WHERE id = ?', id);
+    if (!u || (id !== c.uid && !this.relatedUserIds(c.uid).includes(id))) throw new HttpError(404, 'Usuário não encontrado.');
+    const mutualFriends =
+      id === c.uid
+        ? []
+        : this.all(
+            `SELECT u.* FROM relationships a JOIN relationships b ON a.target_id = b.target_id JOIN users u ON u.id = a.target_id
+             WHERE a.user_id = ? AND b.user_id = ? AND a.type = 'friend' AND b.type = 'friend' ORDER BY u.display_name COLLATE NOCASE`,
+            c.uid,
+            id,
+          ).map((f) => this.pub(f));
+    const mutualGuilds =
+      id === c.uid
+        ? []
+        : this.all('SELECT m1.guild_id AS id FROM members m1 JOIN members m2 ON m1.guild_id = m2.guild_id WHERE m1.user_id = ? AND m2.user_id = ?', c.uid, id).map(
+            (r) => r.id as number,
+          );
+    const badges: string[] = [];
+    if (!u.bot) {
+      const earlier = Number(this.one('SELECT COUNT(*) AS n FROM users WHERE bot = 0 AND (created_at < ? OR (created_at = ? AND id < ?))', u.created_at, u.created_at, id)?.n ?? 0);
+      if (earlier < PIONEER_ACCOUNTS) badges.push('pioneer');
+      if (this.one('SELECT 1 FROM users WHERE bot_owner = ?', id)) badges.push('botDev');
+    }
+    return { mutualFriends, mutualGuilds, badges };
   }
 
   private async changePassword(c: Ctx) {

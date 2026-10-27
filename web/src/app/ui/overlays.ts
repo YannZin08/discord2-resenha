@@ -7,7 +7,8 @@ import { Session } from '../core/session';
 import { Store } from '../core/store';
 import type { Channel, Message } from '../core/types';
 import { MenuItem, Ui } from '../core/ui';
-import { bannerImage, defaultAvatarColor, formatLongDate, uid } from '../core/util';
+import { uid } from '../core/util';
+import { ProfileCard } from './profile-card';
 import { Avatar, Icon } from './shared';
 
 @Component({
@@ -120,45 +121,13 @@ export class ContextMenu {
 
 @Component({
   selector: 'app-profile-popout',
-  imports: [Avatar, Icon, FormsModule],
+  imports: [Icon, FormsModule, ProfileCard],
   template: `
     @if (ui.profile(); as p) {
       @if (user(); as u) {
         <div class="menu-backdrop" (mousedown)="ui.closeMenus()"></div>
         <div class="profile-popout" #el [style.left.px]="pos().x" [style.top.px]="pos().y">
-          <div
-            class="profile-banner"
-            [class.has-image]="!!u.banner"
-            [style.background-color]="u.bannerColor || bannerFallback()"
-            [style.background-image]="banner(u)"
-          ></div>
-          <div class="profile-avatar">
-            <app-avatar [user]="u" [size]="80" [status]="store.statusOf(u.id)" />
-          </div>
-          <div class="profile-body">
-            <div class="profile-names">
-              <div class="pn-display">
-                {{ store.nameIn(p.guildId, u.id) }}
-                @if (u.bot) {
-                  <span class="bot-tag">BOT</span>
-                }
-              </div>
-              <div class="pn-user">{{ u.username }}</div>
-            </div>
-            @if (u.customStatus) {
-              <div class="profile-custom-status">{{ u.customStatus }}</div>
-            }
-            <div class="profile-divider"></div>
-            @if (u.about) {
-              <div class="profile-section">
-                <h3>Sobre mim</h3>
-                <p class="profile-about">{{ u.about }}</p>
-              </div>
-            }
-            <div class="profile-section">
-              <h3>Membro desde</h3>
-              <p>{{ since(u.createdAt) }}</p>
-            </div>
+          <app-profile-card [user]="u" [guildId]="p.guildId">
             @if (p.guildId != null && store.member(p.guildId, u.id); as m) {
               <div class="profile-section">
                 <h3>{{ m.roles.length ? 'Cargos' : 'Sem cargos' }}</h3>
@@ -179,15 +148,15 @@ export class ContextMenu {
                 </div>
               </div>
             }
-            @if (u.id !== store.me()?.id) {
+            @if (u.id !== store.me()?.id && !u.bot) {
               <input
                 class="input profile-message"
-                [placeholder]="'Mensagem para @' + u.username"
+                [placeholder]="'Conversar com @' + u.username"
                 [(ngModel)]="draft"
                 (keydown.enter)="sendDm(u.id)"
               />
             }
-          </div>
+          </app-profile-card>
         </div>
       }
     }
@@ -206,8 +175,6 @@ export class ProfilePopout {
     const p = this.ui.profile();
     return p ? this.store.users()[p.userId] : null;
   });
-  readonly bannerFallback = computed(() => defaultAvatarColor(this.user()?.id ?? 0));
-  readonly banner = bannerImage;
   readonly admin = computed(() => this.store.isAdmin(this.ui.profile()?.guildId));
   readonly memberRoles = computed(() => {
     const p = this.ui.profile();
@@ -238,10 +205,6 @@ export class ProfilePopout {
         });
       });
     });
-  }
-
-  since(ts: number) {
-    return formatLongDate(ts);
   }
 
   private setRoles(roles: number[]) {

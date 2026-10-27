@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Api } from '../../core/api';
 import { Prefs } from '../../core/prefs';
@@ -7,6 +7,7 @@ import { Store } from '../../core/store';
 import { Ui } from '../../core/ui';
 import { Voice } from '../../core/voice';
 import { avatarUrl, bannerImage, defaultAvatarColor } from '../../core/util';
+import { ProfileCard } from '../profile-card';
 import { Avatar, Icon } from '../shared';
 import { confirmDialog, promptDialog } from './dialogs';
 import { StreamOptions } from './go-live';
@@ -21,7 +22,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
 
 @Component({
   selector: 'app-user-settings',
-  imports: [FormsModule, Icon, Avatar, StreamOptions, VoiceSettings],
+  imports: [FormsModule, Icon, Avatar, StreamOptions, VoiceSettings, ProfileCard],
   template: `
     @if (store.me(); as me) {
       <div class="settings-layer">
@@ -120,37 +121,42 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                       <input type="color" class="swatch big picker" [ngModel]="me.bannerColor || '#5865f2'" (ngModelChange)="setBanner($event)" />
                     </div>
                     <div class="settings-divider"></div>
+                    <label class="field-label">Tema do perfil</label>
+                    <p class="hint">Duas cores que pintam o seu card inteiro em degradê, de cima para baixo.</p>
+                    <div class="theme-pickers">
+                      <label class="theme-picker">
+                        <input type="color" class="swatch big picker" [value]="themeDraft()?.[0] ?? '#5865f2'" (input)="pickTheme(0, $event)" (change)="saveTheme()" />
+                        <span>Principal</span>
+                      </label>
+                      <label class="theme-picker">
+                        <input type="color" class="swatch big picker" [value]="themeDraft()?.[1] ?? '#eb459f'" (input)="pickTheme(1, $event)" (change)="saveTheme()" />
+                        <span>Destaque</span>
+                      </label>
+                      @if (themeDraft()) {
+                        <button class="btn btn-link" (click)="removeTheme()">Remover tema</button>
+                      }
+                    </div>
+                    <div class="settings-divider"></div>
+                    <label class="field-label">Pronomes</label>
+                    <input class="input" maxlength="40" [ngModel]="pronouns()" (ngModelChange)="pronouns.set($event)" placeholder="Ex.: ele/dele, ela/dela" />
+                    <div class="settings-divider"></div>
                     <label class="field-label">Sobre mim</label>
-                    <textarea class="input textarea" rows="4" maxlength="190" [(ngModel)]="about" placeholder="Conte um pouco sobre você"></textarea>
-                    <div class="hint right">{{ 190 - about.length }}</div>
+                    <textarea
+                      class="input textarea"
+                      rows="4"
+                      maxlength="190"
+                      [ngModel]="about()"
+                      (ngModelChange)="about.set($event)"
+                      placeholder="Conte um pouco sobre você"
+                    ></textarea>
+                    <div class="hint right">{{ 190 - about().length }}</div>
                     <div class="settings-actions">
                       <button class="btn btn-success" (click)="saveAbout()">Salvar alterações</button>
                     </div>
                   </div>
                   <div class="profile-preview">
                     <label class="field-label">Prévia</label>
-                    <div class="profile-popout static">
-                      <div
-                        class="profile-banner"
-                        [class.has-image]="!!me.banner"
-                        [style.background-color]="me.bannerColor || fallbackBanner()"
-                        [style.background-image]="banner(me)"
-                      ></div>
-                      <div class="profile-avatar"><app-avatar [user]="me" [size]="80" [status]="store.statusOf(me.id)" /></div>
-                      <div class="profile-body">
-                        <div class="profile-names">
-                          <div class="pn-display">{{ me.displayName }}</div>
-                          <div class="pn-user">{{ me.username }}</div>
-                        </div>
-                        @if (about) {
-                          <div class="profile-divider"></div>
-                          <div class="profile-section">
-                            <h3>Sobre mim</h3>
-                            <p class="profile-about">{{ about }}</p>
-                          </div>
-                        }
-                      </div>
-                    </div>
+                    <app-profile-card class="profile-preview-card" [user]="previewUser()!" [preview]="true" />
                   </div>
                 </div>
               }
@@ -268,12 +274,22 @@ export class UserSettings {
   readonly banners = BANNERS;
   readonly baseThemes = THEMES.filter((t) => t.group === 'base');
   readonly colorThemes = THEMES.filter((t) => t.group === 'color');
-  readonly section = signal<Section>('account');
+  /** Section to open on, e.g. "profile" from the profile card's "Editar perfil". */
+  readonly start = input<Section>('account');
+  readonly section = linkedSignal(() => this.start());
   readonly pwError = signal('');
   readonly uploading = signal<'avatar' | 'banner' | null>(null);
   readonly permission = signal('Notification' in window ? Notification.permission : 'denied');
   readonly fallbackBanner = computed(() => defaultAvatarColor(this.store.me()?.id ?? 0));
-  about = this.store.me()?.about ?? '';
+  readonly about = signal(this.store.me()?.about ?? '');
+  readonly pronouns = signal(this.store.me()?.pronouns ?? '');
+  /** Profile theme being picked: shown live in the preview, saved when the picker closes. */
+  readonly themeDraft = linkedSignal(() => this.store.me()?.themeColors ?? null);
+  /** The preview shows what's typed before it's saved. */
+  readonly previewUser = computed(() => {
+    const me = this.store.me();
+    return me ? { ...me, about: this.about(), pronouns: this.pronouns(), themeColors: this.themeDraft() } : null;
+  });
   pwCurrent = '';
   pwNext = '';
   pwConfirm = '';
@@ -367,9 +383,25 @@ export class UserSettings {
   }
 
   saveAbout() {
-    this.patch({ about: this.about })
+    this.patch({ about: this.about(), pronouns: this.pronouns().trim() })
       .then(() => this.ui.toast('Perfil salvo.', 'success'))
       .catch((e) => this.ui.error(e));
+  }
+
+  pickTheme(i: 0 | 1, e: Event) {
+    const next = [...(this.themeDraft() ?? ['#5865f2', '#eb459f'])] as [string, string];
+    next[i] = (e.target as HTMLInputElement).value;
+    this.themeDraft.set(next);
+  }
+
+  saveTheme() {
+    const t = this.themeDraft();
+    if (t) this.patch({ themeColors: t }).catch((e) => this.ui.error(e));
+  }
+
+  removeTheme() {
+    this.themeDraft.set(null);
+    this.patch({ themeColors: null }).catch((e) => this.ui.error(e));
   }
 
   openVoice() {

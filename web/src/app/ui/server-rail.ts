@@ -2,7 +2,7 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { Api } from '../core/api';
 import { Nav } from '../core/nav';
 import { Store } from '../core/store';
-import type { Channel, Guild } from '../core/types';
+import type { Channel, Guild, User } from '../core/types';
 import { MenuItem, Ui } from '../core/ui';
 import { channelLabel, copyText } from '../core/util';
 import { guildMenuItems } from './menus';
@@ -53,11 +53,21 @@ import { Tip } from './tooltip';
           (drop)="drop(g.id)"
         >
           <span class="rail-pill"></span>
-          <button class="rail-btn" [appTip]="g.name" tipSide="right" (click)="open(g)" (contextmenu)="menu($event, g)">
+          <button
+            class="rail-btn"
+            [appTip]="g.name"
+            [tipVoice]="inVoice()[g.id]"
+            tipSide="right"
+            (click)="open(g)"
+            (contextmenu)="menu($event, g)"
+          >
             <app-guild-icon [name]="g.name" [icon]="g.icon" />
           </button>
           @if (store.guildMentions(g.id); as n) {
             <span class="badge rail-badge">{{ n }}</span>
+          }
+          @if (inVoice()[g.id]?.length) {
+            <span class="rail-voice" [class.top]="!!store.guildMentions(g.id)"><app-icon name="speaker" [size]="12" /></span>
           }
         </div>
       }
@@ -86,6 +96,17 @@ export class ServerRail {
   });
   readonly unreadDms = computed(() => this.store.privateChannels().filter((c) => this.store.mentionCount(c.id) > 0 && this.nav.channelId() !== c.id));
   readonly friendRequests = computed(() => Object.values(this.store.relationships()).filter((t) => t === 'incoming').length);
+  /** Who is in a call in each server: the speaker on its icon and the faces in its tooltip. */
+  readonly inVoice = computed(() => {
+    const users = this.store.users();
+    const out: Record<number, User[]> = {};
+    for (const v of Object.values(this.store.voiceStates())) {
+      const u = users[v.userId];
+      if (v.guildId == null || v.channelId == null || !u) continue;
+      (out[v.guildId] ??= []).push(u);
+    }
+    return out;
+  });
 
   label(c: Channel) {
     return channelLabel(c, this.store.users(), this.store.me()?.id);
