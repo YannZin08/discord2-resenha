@@ -206,7 +206,15 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                   <span class="font-a big">A</span>
                   <span class="font-value">{{ prefs.data().chatFont }}px</span>
                 </div>
-                <p class="hint">O tema fica salvo neste dispositivo.</p>
+                <div class="settings-divider"></div>
+                <label class="toggle-row">
+                  <div>
+                    <div class="toggle-title">Reduzir movimento</div>
+                    <div class="hint">Desliga as animações ao clicar, selecionar e abrir menus e janelas.</div>
+                  </div>
+                  <input type="checkbox" class="switch" [ngModel]="prefs.data().reduceMotion" (ngModelChange)="prefs.set('reduceMotion', $event)" />
+                </label>
+                <p class="hint">O tema e essas opções ficam salvos neste dispositivo.</p>
               }
               @case ('stream') {
                 <h2>Transmissão</h2>

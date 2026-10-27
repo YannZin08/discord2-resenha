@@ -4767,3 +4767,270 @@ app-voice-stage {
     grid-template-columns: 1fr 1fr 40px 90px;
   }
 }
+
+/* ------------------------------------------------------------- motion */
+/*
+ * Small animations on click, hover, selection and when things appear, so the app feels
+ * alive. Configurações → Aparência → "Reduzir movimento" turns them all off; the system's
+ * reduce-motion setting turns off the ones that move things around (entrances).
+ */
+
+:root {
+  --spring: cubic-bezier(0.3, 1.6, 0.5, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --press: 0.06s;
+}
+
+/* Press: buttons sink a little and spring back when released. */
+.btn,
+.icon-btn,
+.round-btn,
+.vp-btn,
+.rail-btn,
+.reaction,
+.msg-toolbar button,
+.friends-tabs button,
+.settings-nav button,
+.swatch,
+.theme-swatch,
+.ep-cats button,
+.channel-actions button,
+.category-add,
+.dm-close,
+.tile-fs,
+.tile-leave-stream,
+.live-badge {
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    border-radius 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.3s var(--spring);
+}
+.btn:active:not(:disabled),
+.friends-tabs button:active,
+.settings-nav button:active,
+.tile-leave-stream:active {
+  transform: scale(0.96);
+  transition-duration: var(--press);
+}
+.icon-btn:active,
+.vp-btn:active,
+.msg-toolbar button:active,
+.channel-actions button:active,
+.category-add:active,
+.dm-close:active,
+.tile-fs:active,
+.ep-cats button:active {
+  transform: scale(0.85);
+  transition-duration: var(--press);
+}
+.round-btn:hover {
+  transform: translateY(-2px);
+}
+.round-btn:active {
+  transform: scale(0.9);
+  transition-duration: var(--press);
+}
+.rail-btn:active {
+  transform: translateY(1px) scale(0.96);
+  transition-duration: var(--press);
+}
+.live-badge:active {
+  transform: scale(0.9);
+  transition-duration: var(--press);
+}
+
+/* Colors and swatches lift on hover; reactions and emojis grow. */
+.swatch:hover,
+.theme-swatch:hover {
+  transform: translateY(-2px);
+}
+.swatch:active,
+.theme-swatch:active {
+  transform: scale(0.92);
+  transition-duration: var(--press);
+}
+.reaction img.emoji,
+.ep-items img,
+.quick-react img {
+  transition: transform 0.3s var(--spring);
+}
+.reaction:hover img.emoji,
+.quick-react:hover img {
+  transform: scale(1.18);
+}
+.reaction:active {
+  transform: scale(0.92);
+  transition-duration: var(--press);
+}
+.reaction:active img.emoji {
+  transform: scale(1.4);
+  transition-duration: 0.1s;
+}
+.ep-items button:hover img {
+  transform: scale(1.2);
+}
+.ep-items button:active img {
+  transform: scale(0.9);
+  transition-duration: var(--press);
+}
+.reaction.me {
+  animation: pop 0.35s var(--spring);
+}
+
+/* Lists: hover fades in instead of snapping. */
+.channel,
+.dm-item,
+.member,
+.voice-user,
+.menu-item,
+.message {
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
+}
+.channel-name,
+.member-name,
+.voice-user-name {
+  transition: color 0.12s ease;
+}
+
+/* Selecting something: it slides into place. */
+.channel.active,
+.dm-item.active,
+.settings-nav button.active {
+  animation: select-in 0.25s var(--ease-out);
+}
+.friends-tabs button.active {
+  animation: pop 0.3s var(--spring);
+}
+.theme-check {
+  animation: pop 0.3s var(--spring);
+}
+
+/* Switches squish while pressed, like Discord's. */
+.switch::after {
+  transition:
+    transform 0.25s var(--spring),
+    width 0.15s ease;
+}
+.switch:active::after {
+  width: 24px;
+}
+.switch:checked:active::after {
+  transform: translateX(10px);
+}
+
+/* Things appearing. */
+.menu {
+  transform-origin: top left;
+  animation: menu-in 0.14s var(--ease-out);
+}
+.emoji-picker {
+  animation: menu-in 0.16s var(--ease-out);
+}
+.tooltip {
+  animation: tooltip-in 0.12s var(--ease-out);
+}
+.profile-popout:not(.static) {
+  animation: popout-in 0.18s var(--ease-out);
+}
+.message.fresh {
+  animation: message-in 0.3s var(--ease-out);
+}
+.divider.new {
+  animation: fade-in 0.4s ease;
+}
+.voice-user {
+  animation: slide-in 0.25s var(--ease-out);
+}
+.tile {
+  animation: tile-in 0.3s var(--spring);
+}
+.badge,
+.rail-badge {
+  animation: pop 0.35s var(--spring);
+}
+.avatar.speaking::after {
+  animation: fade-in 0.12s ease;
+}
+
+@keyframes pop {
+  0% {
+    transform: scale(0.6);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes select-in {
+  from {
+    transform: translateX(-4px);
+  }
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-4px);
+  }
+}
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.98);
+  }
+}
+@keyframes popout-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+@keyframes tile-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu,
+  .emoji-picker,
+  .tooltip,
+  .profile-popout,
+  .message.fresh,
+  .voice-user,
+  .tile,
+  .channel.active,
+  .dm-item.active,
+  .settings-nav button.active,
+  .round-btn:hover,
+  .swatch:hover,
+  .theme-swatch:hover {
+    animation: none;
+    transform: none;
+  }
+}
+
+/* "Reduzir movimento": everything stands still (loading spinners and typing dots keep going). */
+:root[data-motion='reduced'] *:not(.spinner, .typing-dots i),
+:root[data-motion='reduced'] *::before,
+:root[data-motion='reduced'] *::after {
+  animation: none !important;
+  transition: none !important;
+}

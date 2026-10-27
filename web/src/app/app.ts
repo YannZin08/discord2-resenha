@@ -74,6 +74,9 @@ export class App {
     void this.session.init();
     effect(() => applyTheme(this.prefs.data().theme, this.prefs.data().chatFont));
     effect(() => {
+      document.documentElement.dataset['motion'] = this.prefs.data().reduceMotion ? 'reduced' : 'full';
+    });
+    effect(() => {
       const status = this.session.status();
       const route = this.nav.route().name;
       if (status === 'out' && route === 'app') this.nav.go('/login', true);

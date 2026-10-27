@@ -116,6 +116,7 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
         class="message"
         [id]="'msg-' + m.id"
         [class.grouped]="grouped()"
+        [class.fresh]="fresh()"
         [class.mentioned]="mentioned()"
         [class.pending]="m.pending && !m.failed"
         [class.failed]="m.failed"
@@ -303,6 +304,14 @@ export class MessageItem {
   readonly editing = computed(() => this.chat.editingId() === this.message().id);
   readonly highlighted = computed(() => this.chat.highlightId() === this.message().id);
   readonly isMine = computed(() => this.message().authorId === this.store.me()?.id);
+  /**
+   * Just arrived (slides in). Your own message animates once, while sending: when the server
+   * confirms it, it's drawn again under its real id and must not animate a second time.
+   */
+  readonly fresh = computed(() => {
+    const m = this.message();
+    return Date.now() - m.createdAt < 8000 && (!!m.pending || !this.isMine());
+  });
   readonly mentioned = computed(() => {
     const m = this.message();
     const me = this.store.me()?.id;

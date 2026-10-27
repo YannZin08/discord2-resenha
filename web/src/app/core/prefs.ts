@@ -51,6 +51,8 @@ interface PrefsData {
   collapsed: Record<number, boolean>;
   theme: string;
   chatFont: number;
+  /** Turns off the click / selection / entrance animations. */
+  reduceMotion: boolean;
   stream: StreamSettings;
   mic: MicSettings;
   outputVolume: number; // 0–100 %
@@ -71,6 +73,7 @@ const DEFAULTS: PrefsData = {
   collapsed: {},
   theme: 'dark',
   chatFont: 16,
+  reduceMotion: false,
   stream: MAX_STREAM,
   mic: DEFAULT_MIC,
   outputVolume: 100,
