@@ -25,6 +25,10 @@ export interface MusicState {
   /** Whether some listener's player started the current song, and its length in seconds. */
   playing?: boolean;
   duration?: number | null;
+  /** Since when nobody is in the bot's voice channel; it waits a few minutes before leaving. */
+  aloneSince?: number | null;
+  /** The bot paused the song itself when it was left alone, so it resumes when someone is back. */
+  autoPaused?: boolean;
 }
 
 /** Why YouTube's embedded player refused a video, from its onError code. */

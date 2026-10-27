@@ -24,6 +24,8 @@ const MAX_FAILURES = 3;
 const MUSIC_PAUSED_MS = 5 * 60_000;
 /** …or when no listener's player starts the song within this time. */
 const MUSIC_START_MS = 45_000;
+/** Alone in its voice channel (everyone left, moved to another call or restarted), the bot waits this long. */
+const MUSIC_ALONE_MS = 5 * 60_000;
 /** A song that ran this long past its length without an "ended" report is skipped. */
 const MUSIC_END_GRACE_MS = 15_000;
 const MUSIC_CHECK_MS = 10_000;
@@ -901,6 +903,7 @@ export class Hub extends DurableObject<Env> {
     ws.serializeAttachment(att);
     if (prev && prev.channelId !== channelId) this.broadcastVoiceLeave(att, prev);
     this.broadcast(this.audience(ch), 'VOICE_STATE_UPDATE', this.voiceState(att, att.voice));
+    if (joining) this.musicListenerBack(channelId);
     if (ch.guild_id == null && joining && othersInChannel === 0) this.createMessage(ch, att.uid, { type: 'call' });
   }
 
@@ -1645,6 +1648,8 @@ export class Hub extends DurableObject<Env> {
     const gid = ch.guild_id as number;
     this.adminGuild(c.uid, gid);
     this.disconnectVoice((_, v) => v.channelId === ch.id);
+    // The music bot waits in an empty channel, but not in one that no longer exists.
+    if (this.music.get(gid)?.voiceChannelId === ch.id) this.stopMusic(gid);
     const members = this.guildMembers(gid);
     const orphans = ch.type === 'category' ? this.all('SELECT id FROM channels WHERE parent_id = ?', ch.id).map((r) => r.id) : [];
     this.tx(() => {
@@ -2084,13 +2089,21 @@ export class Hub extends DurableObject<Env> {
 
   /**
    * Runs every few seconds while the music bot is in a call: like a Discord music bot,
-   * it leaves when nothing is playing (paused too long, or no player could start the song),
+   * it leaves when nothing is playing (alone too long, paused too long, or no player could start the song),
    * and moves on if a song ran out without anyone's player reporting the end.
    */
   async alarm() {
     this.musicCheckScheduled = false;
     const now = Date.now();
     for (const m of [...this.music.values()]) {
+      // Also catches an empty channel nobody left from, e.g. after the server restarted.
+      this.checkMusicListeners(m.voiceChannelId);
+      if (m.aloneSince != null) {
+        if (now - m.aloneSince >= MUSIC_ALONE_MS) {
+          this.stopMusic(m.guildId, `👋 Fiquei sozinho no canal de voz por ${MUSIC_ALONE_MS / 60_000} minutos, então saí. Use \`/tocar\` para me chamar de novo.`);
+        }
+        continue;
+      }
       if (m.pausedAt != null) {
         if (now - m.pausedAt >= MUSIC_PAUSED_MS) {
           this.stopMusic(m.guildId, `⏹️ A música ficou pausada por ${MUSIC_PAUSED_MS / 60_000} minutos, então saí do canal de voz. Use \`/tocar\` para me chamar de novo.`);
@@ -2144,13 +2157,48 @@ export class Hub extends DurableObject<Env> {
     if (message) this.musicSay(m.textChannelId, message);
   }
 
-  /** The bot leaves when the last person leaves its voice channel. */
+  /**
+   * When the last person leaves the bot's voice channel it pauses and waits a few minutes
+   * (someone may be restarting or just stepped into another call) before leaving.
+   */
   private checkMusicListeners(channelId: number) {
     for (const m of this.music.values()) {
-      if (m.voiceChannelId !== channelId) continue;
-      const humans = this.voiceStates((v) => v.channelId === channelId, false).length;
-      if (!humans) this.stopMusic(m.guildId, 'Todo mundo saiu do canal de voz, então parei a música. 👋');
+      if (m.voiceChannelId !== channelId || m.aloneSince != null) continue;
+      if (this.voiceStates((v) => v.channelId === channelId, false).length) continue;
+      const now = Date.now();
+      m.aloneSince = now;
+      if (m.pausedAt == null) {
+        m.pausedAt = now;
+        m.autoPaused = true;
+      }
+      this.saveMusic(m.guildId);
     }
+  }
+
+  /** Someone joined the bot's channel while it waited alone: it carries on where it stopped. */
+  private musicListenerBack(channelId: number) {
+    for (const m of this.music.values()) {
+      if (m.voiceChannelId !== channelId || m.aloneSince == null) continue;
+      const now = Date.now();
+      // Shifting both keeps the position; a song paused by hand restarts its pause countdown.
+      if (m.pausedAt != null) m.startedAt += now - m.pausedAt;
+      m.pausedAt = m.autoPaused ? null : now;
+      m.aloneSince = null;
+      m.autoPaused = false;
+      this.saveMusic(m.guildId);
+    }
+  }
+
+  /** Waiting alone, the bot follows whoever calls it from another voice channel. */
+  private followCaller(m: MusicState, voice: number): boolean {
+    if (m.voiceChannelId === voice) return true;
+    if (m.aloneSince == null) return false;
+    const members = this.guildMembers(m.guildId);
+    this.broadcast(members, 'VOICE_STATE_UPDATE', { ...this.musicVoiceState(m.guildId, null), leftChannelId: m.voiceChannelId });
+    m.voiceChannelId = voice;
+    this.broadcast(members, 'VOICE_STATE_UPDATE', this.musicVoiceState(m.guildId, voice));
+    this.musicListenerBack(voice);
+    return true;
   }
 
   /** `note` goes in the same message, so a skipped song doesn't cost a message of its own. */
@@ -2192,7 +2240,7 @@ export class Hub extends DurableObject<Env> {
     if (command.cmd === 'play') {
       if (!command.query) return say('Diga o que tocar: `/tocar <link do YouTube ou nome da música>`.');
       if (!voice) return say(`<@${uid}>, entre em um canal de voz primeiro e depois peça a música.`);
-      if (m && m.voiceChannelId !== voice) return say(`Já estou tocando em outro canal de voz. Entre lá ou use \`/parar\` primeiro.`);
+      if (m && !this.followCaller(m, voice)) return say(`Já estou tocando em outro canal de voz. Entre lá ou use \`/parar\` primeiro.`);
       // A song link from YouTube Music carries its auto mix (list=RDAMVM…): play just the song.
       const videoId = youtubeId(command.query);
       const list = playlistId(command.query);
@@ -2215,7 +2263,7 @@ export class Hub extends DurableObject<Env> {
     }
 
     if (!m) return say('Não tem nada tocando.');
-    if (voice !== m.voiceChannelId) return say(`<@${uid}>, entre no canal de voz onde estou tocando para controlar a música.`);
+    if (voice == null || !this.followCaller(m, voice)) return say(`<@${uid}>, entre no canal de voz onde estou tocando para controlar a música.`);
     this.musicControl(gid, command.cmd, name);
   }
 
@@ -2233,7 +2281,7 @@ export class Hub extends DurableObject<Env> {
     const say = (text: string, track?: Track) => this.musicSay(ch.id, text, track);
     // The command waited on YouTube: someone may have started or moved the music meanwhile.
     const cur = this.music.get(gid);
-    if (cur && cur.voiceChannelId !== voice) return say(`Já estou tocando em outro canal de voz. Entre lá ou use \`/parar\` primeiro.`);
+    if (cur && !this.followCaller(cur, voice)) return say(`Já estou tocando em outro canal de voz. Entre lá ou use \`/parar\` primeiro.`);
     const upcoming = cur ? cur.queue.length - cur.index - 1 : 0;
     const tracks = found.tracks.slice(0, Math.max(0, MAX_PLAYLIST - upcoming));
     if (!tracks.length) return say(`❌ A fila já tem ${upcoming} músicas, o máximo. Use \`/pular\` ou \`/parar\` antes de adicionar outra playlist.`);
