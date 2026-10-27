@@ -297,11 +297,15 @@ export class ProfileCard {
     this.ui.closeMenus();
   }
 
+  /** Joins without leaving the chat you're in; only watching a stream opens the call screen. */
   joinCall(channelId: number, guildId: number | null, stream: string | null) {
     this.ui.closeMenus();
-    this.nav.openChannel(guildId, channelId);
-    if (stream) void this.voice.watchStream(stream);
-    else void this.voice.join(channelId, guildId);
+    if (stream) {
+      this.nav.openChannel(guildId, channelId);
+      void this.voice.watchStream(stream);
+    } else {
+      void this.voice.join(channelId, guildId);
+    }
   }
 
   watch(sessionId: string) {

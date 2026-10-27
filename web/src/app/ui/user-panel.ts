@@ -31,7 +31,7 @@ import { Tip } from './tooltip';
             >
               <app-icon name="signal" [size]="16" /> {{ voice.connectionLabel() }}
             </div>
-            <div class="vp-where" (click)="goToVoice()">{{ voiceWhere() }}</div>
+            <div class="vp-where" appTip="Abrir a chamada" (click)="goToVoice()">{{ voiceWhere() }}</div>
           </div>
           <button class="icon-btn" appTip="Desconectar" (click)="voice.leave()"><app-icon name="hangup" [size]="20" /></button>
         </div>

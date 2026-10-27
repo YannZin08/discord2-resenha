@@ -346,12 +346,18 @@ img.emoji {
   justify-content: center;
   color: #fff;
 }
+/*
+ * Speaking ring, drawn inside the avatar's own circle (green edge, then a thin dark gap):
+ * a ring outside it would run into the next person in tight lists like the call's.
+ */
 .avatar.speaking::after {
   content: '';
   position: absolute;
-  inset: -3px;
+  inset: 0;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px var(--green);
+  box-shadow:
+    inset 0 0 0 2px var(--green),
+    inset 0 0 0 3px rgba(0, 0, 0, 0.55);
   pointer-events: none;
 }
 .status {
@@ -3016,9 +3022,16 @@ app-voice-stage {
   min-height: 0;
   display: flex;
   flex-wrap: wrap;
-  align-content: center;
+  /* "safe": with many people the tiles scroll instead of spilling over the call buttons. */
+  align-content: safe center;
   justify-content: center;
   gap: 8px;
+  overflow-y: auto;
+}
+.tile-label,
+.tile-fs,
+.tile-leave-stream {
+  z-index: 2;
 }
 .tile {
   position: relative;
@@ -3034,8 +3047,17 @@ app-voice-stage {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  outline: 2px solid transparent;
-  transition: outline-color 0.1s;
+}
+/* Speaking / selected ring inside the tile, over the video, so it never reaches the next tile. */
+.tile::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 2px transparent;
+  pointer-events: none;
+  transition: box-shadow 0.1s;
 }
 .stage-grid[data-count='1'] .tile {
   flex-basis: 100%;
@@ -3048,8 +3070,10 @@ app-voice-stage {
   max-width: 340px;
   min-width: 160px;
 }
-.tile.speaking {
-  outline-color: var(--green);
+.tile.speaking::after {
+  box-shadow:
+    inset 0 0 0 2px var(--green),
+    inset 0 0 0 4px rgba(0, 0, 0, 0.45);
 }
 .tile.focused {
   flex-basis: 100%;

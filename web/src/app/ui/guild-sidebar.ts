@@ -134,9 +134,14 @@ export class GuildSidebar {
     this.prefs.set('collapsed', c);
   }
 
+  /**
+   * A voice channel you're not in: just join the call and stay in the chat you're reading.
+   * Clicking it again once connected opens the call screen.
+   */
   open(c: Channel) {
-    if (c.type === 'voice') {
+    if (c.type === 'voice' && this.voice.channelId() !== c.id) {
       void this.voice.join(c.id, c.guildId);
+      return;
     }
     this.nav.openChannel(c.guildId, c.id);
   }
