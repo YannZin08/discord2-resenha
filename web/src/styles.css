@@ -4652,6 +4652,226 @@ app-profile-card {
 .emoji-empty span {
   font-size: 40px;
 }
+/* Settings → Efeitos sonoros: emoji, name, volume, preview, delete. */
+.sound-table {
+  display: flex;
+  flex-direction: column;
+  margin-top: 8px;
+}
+.sound-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sound-row-emoji {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-mod-hover);
+  color: var(--interactive-normal);
+}
+.sound-row-emoji:hover {
+  background: var(--bg-mod-selected);
+  color: var(--interactive-hover);
+}
+.sound-row-emoji img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+.sound-row-name.input {
+  flex: 1 1 220px;
+  min-width: 0;
+  height: 32px;
+}
+.sound-row-vol {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 150px;
+  min-width: 90px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.sound-row-vol input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--brand);
+}
+.sound-row-vol span {
+  width: 34px;
+  text-align: right;
+}
+
+/* Soundboard popover, above the call's button. */
+.soundboard {
+  position: fixed;
+  z-index: 401;
+  width: 400px;
+  max-width: calc(100vw - 16px);
+  max-height: min(460px, calc(100vh - 80px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 8px;
+  background: var(--bg-popout);
+  box-shadow: var(--elevation-high);
+  overflow: hidden;
+  animation: menu-in 0.16s var(--ease-out);
+}
+.sb-head {
+  padding: 12px;
+  box-shadow: var(--elevation-low);
+}
+.sb-body {
+  flex: 1;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 4px 12px 12px;
+}
+.sb-note {
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-mod-hover);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.sb-section {
+  margin-top: 10px;
+}
+.sb-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--header-secondary);
+}
+.sb-title .guild-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--bg-primary);
+}
+.sb-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 6px;
+}
+.sb-sound {
+  position: relative;
+  display: flex;
+  border-radius: 6px;
+  background: var(--bg-mod-hover);
+  transition: background 0.1s;
+}
+.sb-sound:hover {
+  background: var(--bg-mod-selected);
+}
+.sb-sound.playing {
+  background: color-mix(in srgb, var(--green) 28%, transparent);
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+.sb-play {
+  flex: 1;
+  min-width: 0;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--text-normal);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+.sb-play span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sb-play:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.sb-emoji {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+.sb-preview {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0 6px 6px 0;
+  color: var(--interactive-normal);
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.sb-sound:hover .sb-play,
+.sb-sound.playing .sb-play {
+  padding-right: 30px;
+}
+.sb-sound:hover .sb-preview,
+.sb-sound.playing .sb-preview,
+.sb-preview:focus-visible {
+  opacity: 1;
+}
+.sb-preview:hover {
+  color: var(--interactive-hover);
+  background: var(--bg-mod-active);
+}
+.sb-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 28px 16px;
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 14px;
+}
+.sb-empty span {
+  font-size: 36px;
+}
+.sb-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+.sb-vol {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--interactive-normal);
+}
+.sb-vol input {
+  width: 90px;
+  accent-color: var(--brand);
+}
+@media (hover: none) {
+  .sb-preview {
+    opacity: 1;
+  }
+}
 .ep-search {
   display: flex;
   align-items: center;

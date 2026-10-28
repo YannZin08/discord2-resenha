@@ -69,12 +69,22 @@ export interface Guild {
   createdAt?: number;
   /** The server's own emojis; everyone can use them in any chat. */
   emojis?: CustomEmoji[];
+  /** The server's soundboard; everyone in it can play these in any call. */
+  sounds?: Sound[];
 }
 
 export interface CustomEmoji {
   id: number;
   name: string;
   animated: boolean;
+}
+
+/** A soundboard sound. `emoji` is unicode or a custom <:nome:id>; `volume` is 0–100. */
+export interface Sound {
+  id: number;
+  name: string;
+  emoji: string | null;
+  volume: number;
 }
 
 export interface Channel {
@@ -216,6 +226,8 @@ export interface Ready {
   music?: MusicState[];
   /** My own emojis, usable in any chat. */
   myEmojis?: CustomEmoji[];
+  /** My own soundboard sounds, usable in any call. */
+  mySounds?: Sound[];
 }
 
 export interface InviteInfo {

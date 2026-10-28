@@ -10,6 +10,7 @@ import { avatarUrl, bannerImage, defaultAvatarColor, elapsedLabel } from '../../
 import { detectorScript } from '../../core/game-detector';
 import { parseCustom } from '../../core/custom-emoji';
 import { EmojiManager } from '../emoji-manager';
+import { SoundManager } from '../sound-manager';
 import { customByName, toEditable, toWire } from '../message';
 import { ProfileCard } from '../profile-card';
 import { Avatar, Icon } from '../shared';
@@ -20,7 +21,7 @@ import { MAX_PROFILE_IMAGE, bannerImage as cropBanner, pickImage, squareImage } 
 import { StreamSettings } from '../../core/prefs';
 import { ACCENTS, THEMES } from '../../core/themes';
 
-type Section = 'account' | 'profile' | 'emojis' | 'activity' | 'appearance' | 'voice' | 'stream' | 'notifications';
+type Section = 'account' | 'profile' | 'emojis' | 'sounds' | 'activity' | 'appearance' | 'voice' | 'stream' | 'notifications';
 
 /** One-click custom statuses for when you aren't playing anything. */
 const QUICK_STATUSES = ['Só de boa', 'Estudando', 'Trabalhando', 'Ouvindo música', 'Assistindo um filme', 'Volto já'];
@@ -29,7 +30,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
 
 @Component({
   selector: 'app-user-settings',
-  imports: [FormsModule, Icon, Avatar, StreamOptions, VoiceSettings, ProfileCard, EmojiManager],
+  imports: [FormsModule, Icon, Avatar, StreamOptions, VoiceSettings, ProfileCard, EmojiManager, SoundManager],
   template: `
     @if (store.me(); as me) {
       <div class="settings-layer">
@@ -39,6 +40,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
             <button [class.active]="section() === 'account'" (click)="section.set('account')">Minha conta</button>
             <button [class.active]="section() === 'profile'" (click)="section.set('profile')">Perfis</button>
             <button [class.active]="section() === 'emojis'" (click)="section.set('emojis')">Meus emojis</button>
+            <button [class.active]="section() === 'sounds'" (click)="section.set('sounds')">Meus sons</button>
             <button [class.active]="section() === 'activity'" (click)="section.set('activity')">Atividade</button>
             <h3>Configurações do app</h3>
             <button [class.active]="section() === 'appearance'" (click)="section.set('appearance')">Aparência</button>
@@ -263,6 +265,14 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                   emojis, na seção "Seus emojis".
                 </p>
                 <app-emoji-manager path="/users/@me/emojis" [emojis]="store.myEmojis()" empty="Você ainda não tem emojis seus. Envie o primeiro!" />
+              }
+              @case ('sounds') {
+                <h2>Meus sons</h2>
+                <p class="hint">
+                  Efeitos sonoros só seus, que não dependem de servidor: você toca em qualquer chamada, de servidor ou de mensagem direta, e todo
+                  mundo na chamada ouve. Sem limite e sem Nitro. Para tocar, use o botão de efeitos sonoros da chamada.
+                </p>
+                <app-sound-manager path="/users/@me/sounds" [sounds]="store.mySounds()" empty="Você ainda não tem sons seus. Envie o primeiro!" />
               }
               @case ('activity') {
                 <h2>Atividade</h2>

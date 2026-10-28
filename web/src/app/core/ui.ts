@@ -45,6 +45,8 @@ export class Ui {
   readonly toasts = signal<Toast[]>([]);
   readonly lightbox = signal<{ src: string; name: string; video?: boolean } | null>(null);
   readonly picker = signal<{ x: number; y: number; onPick: (emoji: string) => void; keepOpen?: boolean } | null>(null);
+  /** Soundboard popover, anchored above the button that opened it. */
+  readonly soundboard = signal<{ x: number; y: number } | null>(null);
   readonly memberList = signal<boolean>(store('memberList', true));
   readonly mobileNav = signal(false);
   readonly mobileMembers = signal(false);
@@ -106,6 +108,7 @@ export class Ui {
     this.menu.set(null);
     this.profile.set(null);
     this.picker.set(null);
+    this.soundboard.set(null);
   }
 
   openPicker(anchor: Element, onPick: (emoji: string) => void, keepOpen = false) {
@@ -113,6 +116,15 @@ export class Ui {
     this.menu.set(null);
     this.profile.set(null);
     this.picker.set({ x: r.right, y: r.top, onPick, keepOpen });
+  }
+
+  /** Opens the soundboard above `anchor`; again closes it. */
+  toggleSoundboard(anchor: Element) {
+    if (this.soundboard()) return this.soundboard.set(null);
+    const r = anchor.getBoundingClientRect();
+    this.menu.set(null);
+    this.profile.set(null);
+    this.soundboard.set({ x: r.left + r.width / 2, y: r.top });
   }
 
   toast(text: string, kind: Toast['kind'] = 'info') {

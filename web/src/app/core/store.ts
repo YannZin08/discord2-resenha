@@ -13,6 +13,7 @@ import type {
   Ready,
   RelType,
   Role,
+  Sound,
   Status,
   User,
   VoiceState,
@@ -71,6 +72,9 @@ export class Store {
 
   /** My own emojis (not tied to a server). */
   readonly myEmojis = signal<CustomEmoji[]>([]);
+
+  /** My own soundboard sounds (not tied to a server). */
+  readonly mySounds = signal<Sound[]>([]);
 
   /** Every custom emoji I can use anywhere: mine (guildId null), then each server's in order. */
   readonly customEmojis = computed<(CustomEmoji & { guildId: number | null })[]>(() => [
@@ -152,6 +156,7 @@ export class Store {
     this.voiceStates.set(Object.fromEntries(r.voiceStates.map((v) => [v.sessionId, v])));
     this.music.set(Object.fromEntries((r.music ?? []).map((m) => [m.guildId, { ...m, receivedAt: Date.now() }])));
     this.myEmojis.set(r.myEmojis ?? []);
+    this.mySounds.set(r.mySounds ?? []);
     // History may have moved on while we were disconnected.
     for (const [id, list] of this.lists) {
       if (!channels[id]) this.lists.delete(id);
@@ -229,6 +234,12 @@ export class Store {
         break;
       case 'GUILD_EMOJIS_UPDATE':
         this.guilds.update((all) => (all[d.guildId] ? { ...all, [d.guildId]: { ...all[d.guildId], emojis: d.emojis } } : all));
+        break;
+      case 'USER_SOUNDS_UPDATE':
+        this.mySounds.set(d.sounds);
+        break;
+      case 'GUILD_SOUNDS_UPDATE':
+        this.guilds.update((all) => (all[d.guildId] ? { ...all, [d.guildId]: { ...all[d.guildId], sounds: d.sounds } } : all));
         break;
       case 'GUILD_DELETE':
         this.removeGuild(d.id);

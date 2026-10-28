@@ -43,6 +43,10 @@ const MAX_EMOJI_IMAGE = 2 * 1024 * 1024;
 const EMOJI_NAME = /^[A-Za-z0-9_]{2,32}$/;
 /** A custom emoji in a reaction: "nome:id". */
 const CUSTOM_REACTION = /^([A-Za-z0-9_]{2,32}):(\d{1,20})$/;
+/** Soundboard sounds: ten times Discord's 512 KB, and no limit on how many. */
+const MAX_SOUND = 5 * 1024 * 1024;
+/** Shortest gap between two sounds from the same connection, so a held click can't flood a call. */
+const SOUND_GAP_MS = 250;
 const MAX_MESSAGE = 4000;
 // Files live in SQLite, split in chunks below the 2 MB value limit.
 const CHUNK = 1024 * 1024;
@@ -122,6 +126,11 @@ CREATE TABLE IF NOT EXISTS emojis (
   animated INTEGER NOT NULL DEFAULT 0, user_id INTEGER NOT NULL, created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS emojis_guild ON emojis(guild_id);
+CREATE TABLE IF NOT EXISTS sounds (
+  id INTEGER PRIMARY KEY, guild_id INTEGER NOT NULL, name TEXT NOT NULL, emoji TEXT, file TEXT NOT NULL,
+  volume INTEGER NOT NULL DEFAULT 100, user_id INTEGER NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sounds_guild ON sounds(guild_id);
 `;
 
 // Columns added after the first release; ALTER fails harmlessly once they exist.
@@ -210,6 +219,8 @@ export class Hub extends DurableObject<Env> {
   private music = new Map<number, MusicState>();
   private musicBotId: number | null = null;
   private musicCheckScheduled = false;
+  /** When each connection last played a soundboard sound. */
+  private lastSound = new Map<string, number>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -295,6 +306,14 @@ export class Hub extends DurableObject<Env> {
     // Anyone can see any custom emoji, like Discord's CDN: messages carry them to other servers.
     r('GET', '/api/emojis/:emojiId', (c) => this.serveEmoji(c), true);
     r('HEAD', '/api/emojis/:emojiId', (c) => this.serveEmoji(c), true);
+    r('POST', '/api/guilds/:guildId/sounds', (c) => this.createSound(c));
+    r('PATCH', '/api/guilds/:guildId/sounds/:soundId', (c) => this.updateSound(c));
+    r('DELETE', '/api/guilds/:guildId/sounds/:soundId', (c) => this.deleteSound(c));
+    r('POST', '/api/users/@me/sounds', (c) => this.createSound(c));
+    r('PATCH', '/api/users/@me/sounds/:soundId', (c) => this.updateSound(c));
+    r('DELETE', '/api/users/@me/sounds/:soundId', (c) => this.deleteSound(c));
+    r('GET', '/api/sounds/:soundId', (c) => this.serveSound(c));
+    r('HEAD', '/api/sounds/:soundId', (c) => this.serveSound(c));
     r('POST', '/api/guilds/:guildId/ack', (c) => this.ackGuild(c));
     r('DELETE', '/api/guilds/:guildId/members/@me', (c) => this.leaveGuild(c));
     r('PATCH', '/api/guilds/:guildId/members/:userId', (c) => this.updateMember(c));
@@ -500,6 +519,7 @@ export class Hub extends DurableObject<Env> {
       systemChannelId: g.system_channel_id,
       createdAt: g.created_at,
       emojis: this.guildEmojis(gid),
+      sounds: this.soundList(gid),
       channels: this.all('SELECT * FROM channels WHERE guild_id = ? ORDER BY position, id', gid).map((c) => this.chan(c)),
       roles: this.all('SELECT * FROM roles WHERE guild_id = ? ORDER BY position DESC, id', gid).map((r) => this.role(r)),
       members: this.all('SELECT * FROM members WHERE guild_id = ?', gid).map((m) => ({
@@ -831,6 +851,7 @@ export class Hub extends DurableObject<Env> {
       voiceStates: this.voiceStates((v) => (v.guildId != null ? guildSet.has(v.guildId) : allDmIds.has(v.channelId))),
       music: guildIds.map((g) => this.musicPayload(g)).filter((m) => m.track),
       myEmojis: this.emojiList(0, uid),
+      mySounds: this.soundList(0, uid),
     };
   }
 
@@ -869,6 +890,8 @@ export class Hub extends DurableObject<Env> {
           return this.onVoice(ws, att, msg);
         case 'rtc':
           return this.onRtc(att, msg);
+        case 'sound':
+          return this.onSound(att, msg);
       }
     } catch (e) {
       if (e instanceof HttpError) this.sendWs(ws, { op: 'error', message: e.message });
@@ -1257,6 +1280,7 @@ export class Hub extends DurableObject<Env> {
         this.one('SELECT 1 FROM users WHERE avatar = ? OR banner = ?', key, key) ||
         this.one('SELECT 1 FROM guilds WHERE icon = ?', key) ||
         this.one('SELECT 1 FROM emojis WHERE file = ?', key) ||
+        this.one('SELECT 1 FROM sounds WHERE file = ?', key) ||
         this.one("SELECT 1 FROM messages WHERE attachments LIKE ? ESCAPE '\\'", `%${key}%`);
       if (used) continue;
       this.run('DELETE FROM file_chunks WHERE key = ?', key);
@@ -1585,6 +1609,130 @@ export class Hub extends DurableObject<Env> {
     return this.serveFile({ ...c, params: { key: e.file as string } });
   }
 
+  // ---------------------------------------------------------------- soundboard
+  // Same scopes as custom emojis: a server's sounds (guild_id = the server) are for all its
+  // members, someone's own (guild_id = 0) only for them, and either plays in any call, DMs too.
+  // Nothing is mixed into the call audio: everyone in the channel gets an event and plays the
+  // file on their own device, like the music bot.
+
+  private soundList(gid: number, uid = 0) {
+    const rows = gid
+      ? this.all('SELECT id, name, emoji, volume FROM sounds WHERE guild_id = ? ORDER BY created_at, id', gid)
+      : this.all('SELECT id, name, emoji, volume FROM sounds WHERE guild_id = 0 AND user_id = ? ORDER BY created_at, id', uid);
+    return rows.map((s) => ({ id: s.id as number, name: s.name as string, emoji: (s.emoji as string | null) ?? null, volume: s.volume as number }));
+  }
+
+  private broadcastSounds(gid: number, uid: number) {
+    if (gid) this.broadcast(this.guildMembers(gid), 'GUILD_SOUNDS_UPDATE', { guildId: gid, sounds: this.soundList(gid) });
+    else this.broadcast([uid], 'USER_SOUNDS_UPDATE', { sounds: this.soundList(0, uid) });
+  }
+
+  /** A server the caller manages, or (0) their own sounds. */
+  private soundScope(c: Ctx): number {
+    return this.emojiScope(c);
+  }
+
+  /** A unicode emoji or a custom one (<:nome:id>) shown next to the sound's name; empty clears it. */
+  private soundEmoji(v: unknown): string | null {
+    if (v == null || v === '') return null;
+    if (typeof v !== 'string' || v.length > 64 || /\s/.test(v)) throw new HttpError(400, 'Emoji inválido.');
+    if (v.includes('<') && !/^<a?:[A-Za-z0-9_]{2,32}:\d{1,20}>$/.test(v)) throw new HttpError(400, 'Emoji inválido.');
+    return v;
+  }
+
+  private soundVolume(v: unknown): number {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0 || n > 100) throw new HttpError(400, 'O volume vai de 0 a 100.');
+    return Math.round(n);
+  }
+
+  private async createSound(c: Ctx) {
+    const gid = this.soundScope(c);
+    const b = await c.body<{ name?: unknown; file?: unknown; emoji?: unknown; volume?: unknown }>();
+    const file = this.ownedUpload(b.file, c.uid);
+    const up = this.one('SELECT size, mime FROM uploads WHERE key = ?', file)!;
+    if (!String(up.mime).startsWith('audio/')) throw new HttpError(400, 'O arquivo precisa ser um áudio (MP3, OGG, WAV, M4A...).');
+    if (Number(up.size) > MAX_SOUND) {
+      throw new HttpError(413, `Um som pode ter até 5 MB e esse arquivo tem ${(Number(up.size) / 1024 / 1024).toFixed(1)} MB. Escolha um áudio menor.`);
+    }
+    const name = str(b.name, 'Nome do som', 1, 32);
+    const emoji = this.soundEmoji(b.emoji);
+    const volume = b.volume === undefined ? 100 : this.soundVolume(b.volume);
+    const id = newId();
+    this.run(
+      'INSERT INTO sounds (id, guild_id, name, emoji, file, volume, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      id,
+      gid,
+      name,
+      emoji,
+      file,
+      volume,
+      c.uid,
+      Date.now(),
+    );
+    this.broadcastSounds(gid, c.uid);
+    return { id, name, emoji, volume };
+  }
+
+  private soundIn(gid: number, uid: number, id: number): Row {
+    const s = gid
+      ? this.one('SELECT * FROM sounds WHERE id = ? AND guild_id = ?', id, gid)
+      : this.one('SELECT * FROM sounds WHERE id = ? AND guild_id = 0 AND user_id = ?', id, uid);
+    if (!s) throw new HttpError(404, 'Som não encontrado.');
+    return s;
+  }
+
+  private async updateSound(c: Ctx) {
+    const gid = this.soundScope(c);
+    const s = this.soundIn(gid, c.uid, toId(c.params.soundId));
+    const b = await c.body<{ name?: unknown; emoji?: unknown; volume?: unknown }>();
+    const name = b.name === undefined ? (s.name as string) : str(b.name, 'Nome do som', 1, 32);
+    const emoji = b.emoji === undefined ? ((s.emoji as string | null) ?? null) : this.soundEmoji(b.emoji);
+    const volume = b.volume === undefined ? (s.volume as number) : this.soundVolume(b.volume);
+    this.run('UPDATE sounds SET name = ?, emoji = ?, volume = ? WHERE id = ?', name, emoji, volume, s.id);
+    this.broadcastSounds(gid, c.uid);
+    return { id: s.id, name, emoji, volume };
+  }
+
+  private deleteSound(c: Ctx) {
+    const gid = this.soundScope(c);
+    const s = this.soundIn(gid, c.uid, toId(c.params.soundId));
+    this.run('DELETE FROM sounds WHERE id = ?', s.id);
+    this.releaseFiles([s.file as string]);
+    this.broadcastSounds(gid, c.uid);
+    return { ok: true };
+  }
+
+  private serveSound(c: Ctx): Response {
+    const id = /^\d{1,20}$/.test(c.params.soundId) ? Number(c.params.soundId) : 0;
+    const s = id ? this.one('SELECT file FROM sounds WHERE id = ?', id) : null;
+    if (!s) return new Response('Not found', { status: 404 });
+    return this.serveFile({ ...c, params: { key: s.file as string } });
+  }
+
+  /** Plays a sound for everyone in the caller's call (them included). */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private onSound(att: Att, msg: any) {
+    const v = att.voice;
+    if (!v) throw new HttpError(400, 'Entre em uma chamada para usar os efeitos sonoros.');
+    if (v.deaf) throw new HttpError(400, 'Ative o áudio para usar os efeitos sonoros.');
+    const now = Date.now();
+    if (now - (this.lastSound.get(att.sid) ?? 0) < SOUND_GAP_MS) return;
+    const s = this.one('SELECT * FROM sounds WHERE id = ?', toId(msg.soundId));
+    if (!s) throw new HttpError(404, 'Esse som não existe mais.');
+    const allowed = s.guild_id
+      ? this.one('SELECT 1 FROM members WHERE guild_id = ? AND user_id = ?', s.guild_id, att.uid)
+      : s.user_id === att.uid;
+    if (!allowed) throw new HttpError(403, 'Você não tem acesso a esse som.');
+    this.lastSound.set(att.sid, now);
+    const payload = JSON.stringify({
+      op: 'event',
+      t: 'SOUNDBOARD_PLAY',
+      d: { channelId: v.channelId, userId: att.uid, sessionId: att.sid, soundId: s.id, name: s.name, emoji: s.emoji ?? null, volume: s.volume },
+    });
+    for (const ws of this.live()) if (this.attOf(ws)?.voice?.channelId === v.channelId) this.sendWs(ws, payload);
+  }
+
   private purgeChannelMessages(channelIds: number[]) {
     const keys: string[] = [];
     for (const id of channelIds) {
@@ -1608,10 +1756,10 @@ export class Hub extends DurableObject<Env> {
     this.run('DELETE FROM music WHERE guild_id = ?', gid);
     this.tx(() => {
       this.purgeChannelMessages(this.all('SELECT id FROM channels WHERE guild_id = ?', gid).map((r) => r.id));
-      const emojiFiles = this.all('SELECT file FROM emojis WHERE guild_id = ?', gid).map((r) => r.file as string);
-      for (const t of ['channels', 'members', 'member_roles', 'roles', 'invites', 'bans', 'emojis']) this.run(`DELETE FROM ${t} WHERE guild_id = ?`, gid);
+      const files = this.all('SELECT file FROM emojis WHERE guild_id = ? UNION SELECT file FROM sounds WHERE guild_id = ?', gid, gid).map((r) => r.file as string);
+      for (const t of ['channels', 'members', 'member_roles', 'roles', 'invites', 'bans', 'emojis', 'sounds']) this.run(`DELETE FROM ${t} WHERE guild_id = ?`, gid);
       this.run('DELETE FROM guilds WHERE id = ?', gid);
-      this.releaseFiles([g.icon, ...emojiFiles]);
+      this.releaseFiles([g.icon, ...files]);
     });
     this.broadcast(members, 'GUILD_DELETE', { id: gid });
     return { ok: true };

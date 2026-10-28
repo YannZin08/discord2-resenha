@@ -42,6 +42,9 @@ import { Tip } from './tooltip';
           <button class="vp-btn" [class.on]="!!voice.localScreen()" (click)="stream()" [appTip]="voice.localScreen() ? 'Parar transmissão' : 'Transmitir tela'">
             <app-icon name="screen" [size]="20" />
           </button>
+          <button class="vp-btn" [class.on]="!!ui.soundboard()" (click)="ui.toggleSoundboard($any($event.currentTarget))" appTip="Efeitos sonoros">
+            <app-icon name="soundboard" [size]="20" />
+          </button>
         </div>
       </div>
     }

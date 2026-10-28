@@ -1,4 +1,4 @@
-import { Component, computed, inject, input, signal } from '@angular/core';
+import { Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Api } from '../../core/api';
 import { Nav } from '../../core/nav';
@@ -12,14 +12,15 @@ import { Avatar, GuildIcon, Icon } from '../shared';
 import { confirmDialog, promptDialog } from './dialogs';
 import { pickImage, squareImage } from './image';
 import { EmojiManager } from '../emoji-manager';
+import { SoundManager } from '../sound-manager';
 
-type Section = 'overview' | 'roles' | 'emojis' | 'bots' | 'members' | 'invites' | 'bans';
+type Section = 'overview' | 'roles' | 'emojis' | 'sounds' | 'bots' | 'members' | 'invites' | 'bans';
 
 const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1c40f', '#e67e22', '#e74c3c', '#95a5a6', '#607d8b', '#11806a', '#1f8b4c', '#206694', '#71368a', '#ad1457', '#c27c0e', '#a84300', '#992d22'];
 
 @Component({
   selector: 'app-guild-settings',
-  imports: [FormsModule, Icon, GuildIcon, Avatar, EmojiManager],
+  imports: [FormsModule, Icon, GuildIcon, Avatar, EmojiManager, SoundManager],
   template: `
     @if (guild(); as g) {
       <div class="settings-layer">
@@ -29,6 +30,7 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
             <button [class.active]="section() === 'overview'" (click)="section.set('overview')">Visão geral</button>
             <button [class.active]="section() === 'roles'" (click)="section.set('roles')">Cargos</button>
             <button [class.active]="section() === 'emojis'" (click)="section.set('emojis')">Emojis</button>
+            <button [class.active]="section() === 'sounds'" (click)="section.set('sounds')">Efeitos sonoros</button>
             <button [class.active]="section() === 'bots'" (click)="openBots()">Bots</button>
             <h3>Gestão de membros</h3>
             <button [class.active]="section() === 'members'" (click)="section.set('members')">Membros</button>
@@ -197,6 +199,14 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
                 </p>
                 <app-emoji-manager [path]="'/guilds/' + g.id + '/emojis'" [emojis]="g.emojis ?? []" empty="Este servidor ainda não tem emojis próprios. Envie o primeiro!" />
               }
+              @case ('sounds') {
+                <h2>Efeitos sonoros</h2>
+                <p class="hint">
+                  Envie quantos áudios quiser: aqui não tem limite de espaços nem Nitro. Todo mundo do servidor pode tocar esses sons em qualquer
+                  chamada, inclusive nas mensagens diretas, pelo botão de efeitos sonoros da chamada.
+                </p>
+                <app-sound-manager [path]="'/guilds/' + g.id + '/sounds'" [sounds]="g.sounds ?? []" empty="Este servidor ainda não tem efeitos sonoros. Envie o primeiro!" />
+              }
               @case ('members') {
                 <h2>Membros do servidor</h2>
                 <input class="input" placeholder="Buscar membros" [ngModel]="memberFilter()" (ngModelChange)="memberFilter.set($event)" />
@@ -269,7 +279,9 @@ export class GuildSettings {
   private nav = inject(Nav);
   private voice = inject(Voice);
   readonly colors = ROLE_COLORS;
-  readonly section = signal<Section>('overview');
+  /** Section to open on, e.g. "sounds" from the soundboard. */
+  readonly start = input<Section>('overview');
+  readonly section = linkedSignal(() => this.start());
   readonly busy = signal(false);
   readonly guild = computed(() => this.store.guilds()[this.guildId()]);
   readonly owner = computed(() => this.store.isOwner(this.guildId()));

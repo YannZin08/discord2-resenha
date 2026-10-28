@@ -62,6 +62,7 @@ interface PrefsData {
   mic: MicSettings;
   outputVolume: number; // 0–100 %
   musicVolume: number; // 0–100, the music bot player on this device
+  soundboardVolume: number; // 0–100, everyone's soundboard sounds on this device
 }
 
 const DEFAULTS: PrefsData = {
@@ -86,6 +87,7 @@ const DEFAULTS: PrefsData = {
   mic: DEFAULT_MIC,
   outputVolume: 100,
   musicVolume: 50,
+  soundboardVolume: 70,
 };
 
 function load(): PrefsData {

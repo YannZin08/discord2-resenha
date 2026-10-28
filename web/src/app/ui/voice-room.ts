@@ -113,6 +113,9 @@ interface Tile {
           <button class="round-btn" [class.on]="!!voice.localScreen()" [appTip]="voice.localScreen() ? 'Parar transmissão' : 'Transmitir tela'" (click)="stream()">
             <app-icon name="screen" />
           </button>
+          <button class="round-btn" [class.on]="!!ui.soundboard()" appTip="Efeitos sonoros" (click)="ui.toggleSoundboard($any($event.currentTarget))">
+            <app-icon name="soundboard" />
+          </button>
           <button class="round-btn" [class.off]="voice.mute() || voice.deaf()" [appTip]="voice.mute() || voice.deaf() ? 'Ativar microfone' : 'Silenciar'" (click)="voice.toggleMute()">
             <app-icon [name]="voice.mute() || voice.deaf() ? 'micOff' : 'mic'" />
           </button>
@@ -135,7 +138,7 @@ export class VoiceStage {
   readonly focus = signal<string | null>(null);
   /** Resolution actually being received for each stream tile, e.g. "4K". */
   readonly quality = signal<Record<string, string>>({});
-  private ui = inject(Ui);
+  readonly ui = inject(Ui);
 
   readonly connectedHere = computed(() => this.voice.channelId() === this.channel().id);
 

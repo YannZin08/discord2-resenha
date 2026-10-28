@@ -58,6 +58,13 @@ function keyLabel(code: string | null): string {
           <span>{{ prefs.data().outputVolume }}%</span>
         </div>
       </div>
+      <div>
+        <label class="field-label">Volume dos efeitos sonoros</label>
+        <div class="vol-row">
+          <input type="range" min="0" max="100" [value]="prefs.data().soundboardVolume" (input)="prefs.set('soundboardVolume', +$any($event.target).value)" />
+          <span>{{ prefs.data().soundboardVolume }}%</span>
+        </div>
+      </div>
     </div>
 
     <label class="field-label">Teste de microfone</label>
