@@ -167,9 +167,15 @@ const BADGES: Record<string, Badge> = {
         <div class="profile-section">
           <h3>Membro desde</h3>
           <div class="profile-dates">
-            <span class="pd-row"><app-icon name="chat" [size]="14" /><span class="pd-date">{{ date(u.createdAt) }}</span><small>no Resenha</small></span>
-            @if (joinedAt(); as j) {
-              <span class="pd-row"><app-icon name="group" [size]="14" /><span class="pd-date">{{ date(j) }}</span><small>neste servidor</small></span>
+            @let joined = joinedAt();
+            @if (joined && date(joined) === date(u.createdAt)) {
+              <span class="pd-item" appTip="No Resenha e neste servidor"><app-icon name="chat" [size]="14" />{{ date(u.createdAt) }}</span>
+            } @else {
+              <span class="pd-item" appTip="No Resenha"><app-icon name="chat" [size]="14" />{{ date(u.createdAt) }}</span>
+              @if (joined) {
+                <span class="pd-dot"></span>
+                <span class="pd-item" appTip="Neste servidor"><app-icon name="group" [size]="14" />{{ date(joined) }}</span>
+              }
             }
           </div>
         </div>
@@ -268,8 +274,9 @@ export class ProfileCard {
   }
 
   /** Short like Discord's ("26 de out. de 2026"), so a date and its label fit on one line. */
+  /** Short date, "26 out. 2026" (without pt-BR's "de"s). */
   date(ts: number) {
-    return new Date(ts).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+    return new Date(ts).toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' }).replace(/ de /g, ' ');
   }
 
   async editProfile() {

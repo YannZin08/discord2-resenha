@@ -3665,25 +3665,30 @@ app-profile-card {
   height: 32px;
   margin-top: 10px;
 }
+/* Both dates on one line, like Discord: the icon says which is which (tooltip on hover). */
 .profile-dates {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 14px;
-}
-.pd-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  column-gap: 6px;
+  gap: 4px 8px;
+  font-size: 13px;
+  color: var(--text-normal);
 }
-.pd-date {
+.pd-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   white-space: nowrap;
+  cursor: default;
 }
-.profile-dates small {
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
+.pd-item app-icon {
+  color: var(--interactive-normal);
+}
+.pd-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--interactive-muted);
 }
 .theme-pickers {
   display: flex;
