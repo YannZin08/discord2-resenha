@@ -37,6 +37,12 @@ const COOKIE = 'rs_session';
 const MAX_UPLOAD = 25 * 1024 * 1024;
 /** Avatars and profile banners (GIFs included), like Discord's limit. */
 const MAX_PROFILE_IMAGE = 10 * 1024 * 1024;
+/** Custom emojis load everywhere, so they stay small (Discord's limit is 256 KB). */
+const MAX_EMOJI_IMAGE = 2 * 1024 * 1024;
+/** Custom emoji names, as typed between colons: :nome_do_emoji:. */
+const EMOJI_NAME = /^[A-Za-z0-9_]{2,32}$/;
+/** A custom emoji in a reaction: "nome:id". */
+const CUSTOM_REACTION = /^([A-Za-z0-9_]{2,32}):(\d{1,20})$/;
 const MAX_MESSAGE = 4000;
 // Files live in SQLite, split in chunks below the 2 MB value limit.
 const CHUNK = 1024 * 1024;
@@ -111,6 +117,11 @@ CREATE INDEX IF NOT EXISTS read_states_channel ON read_states(channel_id);
 CREATE TABLE IF NOT EXISTS bot_tokens (token TEXT PRIMARY KEY, bot_id INTEGER NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS music (guild_id INTEGER PRIMARY KEY, data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS emojis (
+  id INTEGER PRIMARY KEY, guild_id INTEGER NOT NULL, name TEXT NOT NULL, file TEXT NOT NULL,
+  animated INTEGER NOT NULL DEFAULT 0, user_id INTEGER NOT NULL, created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS emojis_guild ON emojis(guild_id);
 `;
 
 // Columns added after the first release; ALTER fails harmlessly once they exist.
@@ -275,6 +286,12 @@ export class Hub extends DurableObject<Env> {
     r('POST', '/api/guilds', (c) => this.createGuild(c));
     r('PATCH', '/api/guilds/:guildId', (c) => this.updateGuild(c));
     r('DELETE', '/api/guilds/:guildId', (c) => this.deleteGuild(c));
+    r('POST', '/api/guilds/:guildId/emojis', (c) => this.createEmoji(c));
+    r('PATCH', '/api/guilds/:guildId/emojis/:emojiId', (c) => this.renameEmoji(c));
+    r('DELETE', '/api/guilds/:guildId/emojis/:emojiId', (c) => this.deleteEmoji(c));
+    // Anyone can see any custom emoji, like Discord's CDN: messages carry them to other servers.
+    r('GET', '/api/emojis/:emojiId', (c) => this.serveEmoji(c), true);
+    r('HEAD', '/api/emojis/:emojiId', (c) => this.serveEmoji(c), true);
     r('POST', '/api/guilds/:guildId/ack', (c) => this.ackGuild(c));
     r('DELETE', '/api/guilds/:guildId/members/@me', (c) => this.leaveGuild(c));
     r('PATCH', '/api/guilds/:guildId/members/:userId', (c) => this.updateMember(c));
@@ -479,6 +496,7 @@ export class Hub extends DurableObject<Env> {
       ownerId: g.owner_id,
       systemChannelId: g.system_channel_id,
       createdAt: g.created_at,
+      emojis: this.guildEmojis(gid),
       channels: this.all('SELECT * FROM channels WHERE guild_id = ? ORDER BY position, id', gid).map((c) => this.chan(c)),
       roles: this.all('SELECT * FROM roles WHERE guild_id = ? ORDER BY position DESC, id', gid).map((r) => this.role(r)),
       members: this.all('SELECT * FROM members WHERE guild_id = ?', gid).map((m) => ({
@@ -1228,6 +1246,7 @@ export class Hub extends DurableObject<Env> {
       const used =
         this.one('SELECT 1 FROM users WHERE avatar = ? OR banner = ?', key, key) ||
         this.one('SELECT 1 FROM guilds WHERE icon = ?', key) ||
+        this.one('SELECT 1 FROM emojis WHERE file = ?', key) ||
         this.one("SELECT 1 FROM messages WHERE attachments LIKE ? ESCAPE '\\'", `%${key}%`);
       if (used) continue;
       this.run('DELETE FROM file_chunks WHERE key = ?', key);
@@ -1459,6 +1478,89 @@ export class Hub extends DurableObject<Env> {
     return out;
   }
 
+  // ---------------------------------------------------------------- custom emojis
+  // No slots and no Nitro: a server can have as many as it wants, animated ones included,
+  // and everyone can use every emoji of every server they're in, in any chat.
+
+  private guildEmojis(gid: number) {
+    return this.all('SELECT id, name, animated FROM emojis WHERE guild_id = ? ORDER BY created_at, id', gid).map((e) => ({
+      id: e.id as number,
+      name: e.name as string,
+      animated: !!e.animated,
+    }));
+  }
+
+  private broadcastEmojis(gid: number) {
+    this.broadcast(this.guildMembers(gid), 'GUILD_EMOJIS_UPDATE', { guildId: gid, emojis: this.guildEmojis(gid) });
+  }
+
+  private emojiName(v: unknown, gid: number, except = 0): string {
+    const name = typeof v === 'string' ? v.trim().replace(/^:|:$/g, '') : '';
+    if (!EMOJI_NAME.test(name)) throw new HttpError(400, 'O nome do emoji precisa ter de 2 a 32 letras, números ou _ (sem espaços nem acentos).');
+    if (this.one('SELECT 1 FROM emojis WHERE guild_id = ? AND name = ? AND id != ?', gid, name, except)) {
+      throw new HttpError(409, `Já existe um emoji :${name}: neste servidor.`);
+    }
+    return name;
+  }
+
+  private async createEmoji(c: Ctx) {
+    const gid = toId(c.params.guildId);
+    this.adminGuild(c.uid, gid);
+    const b = await c.body<{ name?: unknown; file?: unknown }>();
+    const file = this.ownedUpload(b.file, c.uid, true);
+    const up = this.one('SELECT size, mime FROM uploads WHERE key = ?', file)!;
+    if (Number(up.size) > MAX_EMOJI_IMAGE) {
+      throw new HttpError(413, `Um emoji pode ter até 2 MB e esse arquivo tem ${(Number(up.size) / 1024 / 1024).toFixed(1)} MB. Escolha uma imagem ou GIF menor.`);
+    }
+    const name = this.emojiName(b.name, gid);
+    const id = newId();
+    this.run(
+      'INSERT INTO emojis (id, guild_id, name, file, animated, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      id,
+      gid,
+      name,
+      file,
+      up.mime === 'image/gif' ? 1 : 0,
+      c.uid,
+      Date.now(),
+    );
+    this.broadcastEmojis(gid);
+    return { id, name, animated: up.mime === 'image/gif' };
+  }
+
+  private emojiIn(gid: number, id: number): Row {
+    const e = this.one('SELECT * FROM emojis WHERE id = ? AND guild_id = ?', id, gid);
+    if (!e) throw new HttpError(404, 'Emoji não encontrado.');
+    return e;
+  }
+
+  private async renameEmoji(c: Ctx) {
+    const gid = toId(c.params.guildId);
+    this.adminGuild(c.uid, gid);
+    const e = this.emojiIn(gid, toId(c.params.emojiId));
+    const name = this.emojiName((await c.body<{ name?: unknown }>()).name, gid, e.id as number);
+    this.run('UPDATE emojis SET name = ? WHERE id = ?', name, e.id);
+    this.broadcastEmojis(gid);
+    return { id: e.id, name, animated: !!e.animated };
+  }
+
+  private deleteEmoji(c: Ctx) {
+    const gid = toId(c.params.guildId);
+    this.adminGuild(c.uid, gid);
+    const e = this.emojiIn(gid, toId(c.params.emojiId));
+    this.run('DELETE FROM emojis WHERE id = ?', e.id);
+    this.releaseFiles([e.file as string]);
+    this.broadcastEmojis(gid);
+    return { ok: true };
+  }
+
+  private serveEmoji(c: Ctx): Response {
+    const id = /^\d{1,20}$/.test(c.params.emojiId) ? Number(c.params.emojiId) : 0;
+    const e = id ? this.one('SELECT file FROM emojis WHERE id = ?', id) : null;
+    if (!e) return new Response('Not found', { status: 404 });
+    return this.serveFile({ ...c, params: { key: e.file as string } });
+  }
+
   private purgeChannelMessages(channelIds: number[]) {
     const keys: string[] = [];
     for (const id of channelIds) {
@@ -1482,9 +1584,10 @@ export class Hub extends DurableObject<Env> {
     this.run('DELETE FROM music WHERE guild_id = ?', gid);
     this.tx(() => {
       this.purgeChannelMessages(this.all('SELECT id FROM channels WHERE guild_id = ?', gid).map((r) => r.id));
-      for (const t of ['channels', 'members', 'member_roles', 'roles', 'invites', 'bans']) this.run(`DELETE FROM ${t} WHERE guild_id = ?`, gid);
+      const emojiFiles = this.all('SELECT file FROM emojis WHERE guild_id = ?', gid).map((r) => r.file as string);
+      for (const t of ['channels', 'members', 'member_roles', 'roles', 'invites', 'bans', 'emojis']) this.run(`DELETE FROM ${t} WHERE guild_id = ?`, gid);
       this.run('DELETE FROM guilds WHERE id = ?', gid);
-      this.releaseFiles([g.icon]);
+      this.releaseFiles([g.icon, ...emojiFiles]);
     });
     this.broadcast(members, 'GUILD_DELETE', { id: gid });
     return { ok: true };
@@ -2488,8 +2591,15 @@ export class Hub extends DurableObject<Env> {
   private react(c: Ctx, add: boolean) {
     const ch = this.channelFor(c.uid, toId(c.params.channelId));
     const m = this.messageIn(ch, toId(c.params.messageId));
-    const emoji = c.params.emoji;
+    let emoji = c.params.emoji;
     if (!emoji || emoji.length > 64 || /\s/.test(emoji)) throw new HttpError(400, 'Emoji inválido.');
+    const custom = emoji.match(CUSTOM_REACTION);
+    if (custom && add) {
+      // Any server's emoji works anywhere; the stored name is the emoji's current one.
+      const e = this.one('SELECT name FROM emojis WHERE id = ?', Number(custom[2]));
+      if (!e) throw new HttpError(404, 'Esse emoji não existe mais.');
+      emoji = `${e.name}:${custom[2]}`;
+    }
     if (add) {
       const distinct = this.one('SELECT COUNT(DISTINCT emoji) AS n FROM reactions WHERE message_id = ?', m.id)!.n;
       const has = this.one('SELECT 1 FROM reactions WHERE message_id = ? AND emoji = ?', m.id, emoji);

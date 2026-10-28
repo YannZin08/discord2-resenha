@@ -2,14 +2,14 @@ import { Component, ElementRef, computed, effect, inject, input, signal, untrack
 import { FormsModule } from '@angular/forms';
 import { Api } from '../core/api';
 import { searchEmojis } from '../core/emoji';
+import { customToken, emojiSrc, parseCustom } from '../core/custom-emoji';
 import { Gateway } from '../core/gateway';
-import { twemojiUrl } from '../core/markdown';
 import { Store } from '../core/store';
 import type { Attachment, Channel, Message, PendingFile } from '../core/types';
 import { Ui } from '../core/ui';
 import { channelLabel, formatSize, imageSize, isImage, uid } from '../core/util';
 import { ChatState, Drafts } from './chat-state';
-import { toWire } from './message';
+import { customByName, toWire } from './message';
 import { Autosize, Avatar, Icon } from './shared';
 import { Tip } from './tooltip';
 
@@ -216,7 +216,14 @@ export class Composer {
   }
 
   emojiUrl(e: string) {
-    return twemojiUrl(e);
+    return emojiSrc(e);
+  }
+
+  /** Custom emojis go in the text as :nome: when that name finds them again on send. */
+  private emojiText(picked: string): string {
+    const c = parseCustom(picked);
+    if (!c) return picked;
+    return customByName(this.store, this.channel().guildId, c.name)?.id === +c.id ? `:${c.name}:` : picked;
   }
 
   onInput(v: string) {
@@ -286,7 +293,14 @@ export class Composer {
     } else {
       if (query.length < 2) return this.suggestions.set([]);
       this.acTitle.set(`Emojis correspondentes a :${q}`);
-      list = searchEmojis(query, 10).map((e) => ({ key: e.char, label: `:${e.name}:`, insert: e.char + ' ', emoji: e.char }));
+      // Custom emojis of every server I'm in (this one's first), then the Unicode ones.
+      const custom = this.store
+        .customEmojis()
+        .filter((e) => e.name.toLowerCase().includes(query))
+        .sort((a, b) => Number(b.guildId === c.guildId) - Number(a.guildId === c.guildId) || Number(!a.name.toLowerCase().startsWith(query)) - Number(!b.name.toLowerCase().startsWith(query)))
+        .slice(0, 5)
+        .map((e) => ({ key: 'e' + e.id, label: `:${e.name}:`, sub: this.store.guilds()[e.guildId]?.name, insert: this.emojiText(customToken(e)) + ' ', emoji: customToken(e) }));
+      list = [...custom, ...searchEmojis(query, 10 - custom.length).map((e) => ({ key: e.char, label: `:${e.name}:`, insert: e.char + ' ', emoji: e.char }))];
     }
     this.suggestions.set(list);
     this.acIndex.set(0);
@@ -400,7 +414,8 @@ export class Composer {
   openPicker(e: MouseEvent) {
     this.ui.openPicker(
       e.currentTarget as Element,
-      (emoji) => {
+      (picked) => {
+        const emoji = this.emojiText(picked);
         const el = this.box()?.nativeElement;
         const t = this.text();
         const pos = el?.selectionStart ?? t.length;

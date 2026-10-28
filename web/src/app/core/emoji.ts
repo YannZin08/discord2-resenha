@@ -1,10 +1,18 @@
 // Emoji set for the picker and :shortcode: autocomplete.
+// The full Unicode set (public/emoji.json, made by scripts/build-emoji.mjs) loads in the
+// background; until then the short hand-written list below is used.
 // Each line: emoji, shortcode, then extra search words (pt/en).
+
+import { signal } from '@angular/core';
 
 export interface EmojiEntry {
   char: string;
   name: string;
   keywords: string;
+  /** Other :names: that also work, like :thumbsup: and :+1:. */
+  aliases?: string[];
+  /** The five skin tones, light to dark. */
+  skins?: string[];
 }
 
 export interface EmojiCategory {
@@ -667,7 +675,7 @@ const RAW: [string, string, string, string][] = [
   ],
 ];
 
-export const EMOJI_CATEGORIES: EmojiCategory[] = RAW.map(([id, label, icon, body]) => ({
+const BUILT_IN: EmojiCategory[] = RAW.map(([id, label, icon, body]) => ({
   id,
   label,
   icon,
@@ -681,14 +689,69 @@ export const EMOJI_CATEGORIES: EmojiCategory[] = RAW.map(([id, label, icon, body
     }),
 }));
 
-export const ALL_EMOJIS: EmojiEntry[] = EMOJI_CATEGORIES.flatMap((c) => c.emojis);
-const BY_NAME = new Map(ALL_EMOJIS.map((e) => [e.name, e.char]));
+/** The picker's categories: the built-in list, then every emoji once emoji.json arrives. */
+export const emojiCategories = signal<EmojiCategory[]>(BUILT_IN);
+
+let all: EmojiEntry[] = [];
+let byName = new Map<string, string>();
+/** Any form of an emoji (skin tone, with or without U+FE0F) → its entry. */
+let byChar = new Map<string, EmojiEntry>();
+
+function index(cats: EmojiCategory[]) {
+  all = cats.flatMap((c) => c.emojis);
+  byName = new Map();
+  byChar = new Map();
+  for (const e of all) {
+    for (const n of [e.name, ...(e.aliases ?? [])]) if (!byName.has(n)) byName.set(n, e.char);
+    for (const c of [e.char, ...(e.skins ?? [])]) byChar.set(c.replace(/\uFE0F/g, ''), e);
+  }
+}
+index(BUILT_IN);
+
+let loading: Promise<void> | null = null;
+
+/** Fetches the full emoji set once (the browser caches it). */
+export function loadEmojis(): Promise<void> {
+  loading ??= fetch('/emoji.json')
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+    .then((d: { categories: { id: string; label: string; icon: string; emojis: [string, string, string, string, string[]?][] }[] }) => {
+      const cats = d.categories.map((c) => ({
+        id: c.id,
+        label: c.label,
+        icon: c.icon,
+        emojis: c.emojis.map(([char, name, aliases, words, skins]) => ({
+          char,
+          name,
+          aliases: aliases ? aliases.split(' ') : [],
+          keywords: `${name.replace(/_/g, ' ')} ${aliases.replace(/_/g, ' ')} ${words}`,
+          skins,
+        })),
+      }));
+      index(cats);
+      emojiCategories.set(cats);
+    })
+    .catch((e) => {
+      console.warn('emoji list failed to load', e);
+      loading = null;
+    });
+  return loading;
+}
+
+/** The emoji in the chosen skin tone (0 = default yellow, 1–5 light to dark). */
+export function withSkin(e: EmojiEntry, tone: number): string {
+  return tone > 0 && e.skins ? e.skins[tone - 1] : e.char;
+}
+
+/** The entry for an emoji character, in any skin tone. */
+export function emojiEntry(char: string): EmojiEntry | undefined {
+  return byChar.get(char.replace(/\uFE0F/g, ''));
+}
 
 function normalize(s: string): string {
   return s
     .toLowerCase()
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '');
+    .replace(/[\u0300-\u036f]/g, '');
 }
 
 export function searchEmojis(q: string, limit = 60): EmojiEntry[] {
@@ -696,15 +759,14 @@ export function searchEmojis(q: string, limit = 60): EmojiEntry[] {
   if (!n) return [];
   const starts: EmojiEntry[] = [];
   const contains: EmojiEntry[] = [];
-  for (const e of ALL_EMOJIS) {
-    const name = normalize(e.name);
-    if (name.startsWith(n)) starts.push(e);
+  for (const e of all) {
+    if (normalize(e.name).startsWith(n) || e.aliases?.some((a) => a.startsWith(n))) starts.push(e);
     else if (normalize(e.keywords).includes(n)) contains.push(e);
   }
   return [...starts, ...contains].slice(0, limit);
 }
 
-/** Replaces :shortcode: with the emoji, like typing :joy: in Discord. */
-export function replaceShortcodes(text: string): string {
-  return text.replace(/:([a-z0-9_+-]{2,40}):/g, (m, name: string) => BY_NAME.get(name) ?? m);
+/** The emoji for a :shortcode: name ("joy" → 😂), if there is one. */
+export function shortcodeEmoji(name: string): string | undefined {
+  return byName.get(name);
 }

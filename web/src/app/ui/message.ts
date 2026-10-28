@@ -2,8 +2,9 @@ import { Component, ElementRef, computed, effect, inject, input, signal } from '
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml, SafeResourceUrl } from '@angular/platform-browser';
 import { Api } from '../core/api';
-import { replaceShortcodes } from '../core/emoji';
-import { escapeHtml, isJumbo, renderMarkdown, twemojiUrl } from '../core/markdown';
+import { shortcodeEmoji } from '../core/emoji';
+import { CUSTOM_TOKEN, customToken, emojiLabel, emojiSrc, reactionKey } from '../core/custom-emoji';
+import { escapeHtml, isJumbo, renderMarkdown } from '../core/markdown';
 import { Nav } from '../core/nav';
 import { Prefs } from '../core/prefs';
 import { Store } from '../core/store';
@@ -49,7 +50,19 @@ export function toEditable(content: string, store: Store): string {
     .replace(/<#(\d+)>/g, (m, id: string) => {
       const c = store.channels()[+id];
       return c ? '#' + c.name : m;
-    });
+    })
+    .replace(CUSTOM_TOKEN, (m, _a: string, name: string, id: string) => (customByName(store, guildId0(store, +id), name)?.id === +id ? `:${name}:` : m));
+}
+
+/** The server an emoji belongs to, if it's one of mine. */
+function guildId0(store: Store, emojiId: number): number | null {
+  return store.customEmojis().find((e) => e.id === emojiId)?.guildId ?? null;
+}
+
+/** A custom emoji by :name:, this server's first, then any other server's I'm in. */
+export function customByName(store: Store, guildId: number | null, name: string) {
+  const all = store.customEmojis();
+  return all.find((e) => e.name === name && e.guildId === guildId) ?? all.find((e) => e.name === name);
 }
 
 /** Converts typed @username / #channel back to <@id> / <#id>, and :shortcodes: to emojis. */
@@ -58,7 +71,16 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
   const byName = new Map<string, number>();
   const ids = guildId != null ? Object.keys(store.members()[guildId] ?? {}).map(Number) : recipients;
   for (const id of ids) if (users[id]) byName.set(users[id].username.toLowerCase(), id);
-  let out = replaceShortcodes(text);
+  // :nome: → this server's emoji, else the Unicode one (:joy:), else another server's.
+  // Names already inside a <:nome:id> token are left alone.
+  let out = text.replace(/(?<!<a?):([A-Za-z0-9_+-]{2,40}):/g, (m, name: string) => {
+    const own = store.customEmojis().find((e) => e.name === name && e.guildId === guildId);
+    if (own) return customToken(own);
+    const unicode = shortcodeEmoji(name);
+    if (unicode) return unicode;
+    const any = customByName(store, guildId, name);
+    return any ? customToken(any) : m;
+  });
   out = out.replace(/(^|[^\w<])@([a-z0-9_.]{2,32})/gi, (m, pre: string, name: string) => {
     const id = byName.get(name.toLowerCase().replace(/\.$/, ''));
     return id ? `${pre}<@${id}>${name.endsWith('.') ? '.' : ''}` : m;
@@ -250,7 +272,7 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
           <div class="reactions">
             @for (r of m.reactions; track r.emoji) {
               <button class="reaction" [class.me]="reacted(r)" (click)="toggleReaction(r.emoji)" [appTip]="reactors(r)">
-                <img class="emoji" [src]="emojiUrl(r.emoji)" [alt]="r.emoji" />
+                <img class="emoji" [src]="emojiUrl(r.emoji)" [alt]="emojiLabel(r.emoji)" />
                 <span>{{ r.users.length }}</span>
               </button>
             }
@@ -269,7 +291,7 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
         @if (!m.pending && !editing()) {
           <div class="msg-toolbar">
             @for (e of quickReactions(); track e) {
-              <button class="quick-react" (click)="toggleReaction(e)"><img [src]="emojiUrl(e)" [alt]="e" /></button>
+              <button class="quick-react" (click)="toggleReaction(e)"><img [src]="emojiUrl(e)" [alt]="emojiLabel(e)" /></button>
             }
             <button appTip="Adicionar reação" (click)="pickReaction($event)"><app-icon name="addReaction" [size]="20" /></button>
             @if (isMine()) {
@@ -394,8 +416,10 @@ export class MessageItem {
     return fitSize(a.width, a.height);
   }
 
+  readonly emojiLabel = emojiLabel;
+
   emojiUrl(e: string) {
-    return twemojiUrl(e);
+    return emojiSrc(e);
   }
 
   yt(e: Embed) {
@@ -417,10 +441,12 @@ export class MessageItem {
   reactors(r: Reaction) {
     const names = r.users.slice(0, 5).map((u) => this.store.nameIn(this.message().guildId, u));
     const more = r.users.length > 5 ? ` e mais ${r.users.length - 5}` : '';
-    return `${names.join(', ')}${more} reagiu com ${r.emoji}`;
+    return `${names.join(', ')}${more} reagiu com ${emojiLabel(r.emoji)}`;
   }
 
-  toggleReaction(emoji: string) {
+  /** Takes any emoji the picker gives (Unicode or a custom <:nome:id>). */
+  toggleReaction(picked: string) {
+    const emoji = reactionKey(picked);
     const m = this.message();
     const mine = m.reactions.find((r) => r.emoji === emoji && this.reacted(r));
     const path = `/channels/${m.channelId}/messages/${m.id}/reactions/${encodeURIComponent(emoji)}`;
@@ -431,7 +457,7 @@ export class MessageItem {
     e.stopPropagation();
     this.ui.openPicker(e.currentTarget as Element, (emoji) => {
       const m = this.message();
-      const has = m.reactions.find((r) => r.emoji === emoji && this.reacted(r));
+      const has = m.reactions.find((r) => r.emoji === reactionKey(emoji) && this.reacted(r));
       if (!has) this.toggleReaction(emoji);
     });
   }
@@ -545,7 +571,7 @@ export class MessageItem {
           ...this.prefs
             .data()
             .recentEmojis.slice(0, 6)
-            .map((emoji) => ({ label: emoji, action: () => this.toggleReaction(emoji) })),
+            .map((emoji) => ({ label: emojiLabel(emoji), action: () => this.toggleReaction(emoji) })),
           { separator: true },
           { label: 'Ver mais', action: () => this.ui.picker.set({ x: e.x, y: e.y, onPick: (emoji) => this.toggleReaction(emoji) }) },
         ],

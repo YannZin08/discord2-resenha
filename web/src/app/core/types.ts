@@ -67,6 +67,14 @@ export interface Guild {
   ownerId: number;
   systemChannelId: number | null;
   createdAt?: number;
+  /** The server's own emojis; everyone can use them in any chat. */
+  emojis?: CustomEmoji[];
+}
+
+export interface CustomEmoji {
+  id: number;
+  name: string;
+  animated: boolean;
 }
 
 export interface Channel {

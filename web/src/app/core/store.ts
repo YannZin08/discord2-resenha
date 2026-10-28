@@ -68,6 +68,11 @@ export class Store {
       .sort((a, b) => (b.lastMessageId ?? b.id) - (a.lastMessageId ?? a.id)),
   );
 
+  /** Every custom emoji of every server I'm in, in server order: all usable anywhere. */
+  readonly customEmojis = computed(() =>
+    this.guildList().flatMap((g) => (g.emojis ?? []).map((e) => ({ ...e, guildId: g.id }))),
+  );
+
   readonly myVoice = computed(() => {
     const sid = this.sessionId();
     return sid ? (this.voiceStates()[sid] ?? null) : null;
@@ -212,6 +217,9 @@ export class Store {
         break;
       case 'GUILD_UPDATE':
         this.guilds.update((all) => (all[d.id] ? { ...all, [d.id]: { ...all[d.id], ...d } } : all));
+        break;
+      case 'GUILD_EMOJIS_UPDATE':
+        this.guilds.update((all) => (all[d.guildId] ? { ...all, [d.guildId]: { ...all[d.guildId], emojis: d.emojis } } : all));
         break;
       case 'GUILD_DELETE':
         this.removeGuild(d.id);

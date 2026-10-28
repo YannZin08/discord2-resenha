@@ -1,7 +1,7 @@
 // Discord-flavored markdown → HTML. Everything is escaped first; only the tags
 // produced here end up in the output, so it is safe to bind as trusted HTML.
 
-const TWEMOJI = 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/';
+const TWEMOJI = 'https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.2/assets/svg/';
 
 const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 export function escapeHtml(s: string): string {
@@ -12,6 +12,8 @@ const EMOJI_SRC =
   '\\p{Regional_Indicator}{2}|[#*0-9]\\uFE0F?\\u20E3|(?:\\p{Emoji_Presentation}|\\p{Extended_Pictographic}\\uFE0F)\\p{Emoji_Modifier}?(?:\\u200D\\p{Extended_Pictographic}\\uFE0F?\\p{Emoji_Modifier}?)*';
 const EMOJI_RE = new RegExp(EMOJI_SRC, 'gu');
 const ONLY_EMOJI_RE = new RegExp(`^(?:\\s|${EMOJI_SRC})+$`, 'u');
+/** A server's own emoji in a message: <:nome:id>, or <a:nome:id> when animated. */
+const CUSTOM_RE = /<a?:([A-Za-z0-9_]{2,32}):(\d{1,20})>/g;
 
 export function twemojiUrl(emoji: string): string {
   const s = emoji.includes('‍') ? emoji : emoji.replace(/️/g, '');
@@ -73,6 +75,9 @@ export function renderMarkdown(src: string, ctx: RenderContext): string {
     return hold(`<span class="mention channel" data-channel="${id}">#${escapeHtml(name ?? 'canal-excluído')}</span>`);
   });
   s = s.replace(/@(everyone|here)\b/g, (m) => hold(`<span class="mention">${m}</span>`));
+  s = s.replace(CUSTOM_RE, (_, name: string, id: string) =>
+    hold(`<img class="emoji custom" alt=":${name}:" title=":${name}:" draggable="false" src="/api/emojis/${id}">`),
+  );
 
   s = escapeHtml(s);
 
@@ -140,6 +145,13 @@ export function renderMarkdown(src: string, ctx: RenderContext): string {
 /** Messages made of only a few emojis are shown big, like Discord. */
 export function isJumbo(content: string): boolean {
   const t = content.trim();
-  if (!t || !ONLY_EMOJI_RE.test(t)) return false;
-  return (t.match(EMOJI_RE)?.length ?? 0) <= 27;
+  const custom = t.match(CUSTOM_RE)?.length ?? 0;
+  const rest = t.replace(CUSTOM_RE, '').trim();
+  if (rest ? !ONLY_EMOJI_RE.test(rest) : !custom) return false;
+  return custom + (rest.match(EMOJI_RE)?.length ?? 0) <= 27;
+}
+
+/** Message text for places without images (notifications): <:nome:id> reads as :nome:. */
+export function plainEmojis(text: string): string {
+  return text.replace(CUSTOM_RE, ':$1:');
 }

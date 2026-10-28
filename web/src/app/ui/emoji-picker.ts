@@ -1,33 +1,64 @@
 import { Component, ElementRef, computed, effect, inject, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { EMOJI_CATEGORIES, EmojiEntry, searchEmojis } from '../core/emoji';
+import { customEmojiUrl, customToken, emojiLabel, emojiSrc } from '../core/custom-emoji';
+import { EmojiEntry, emojiCategories, emojiEntry, loadEmojis, searchEmojis, withSkin } from '../core/emoji';
 import { twemojiUrl } from '../core/markdown';
 import { Prefs } from '../core/prefs';
+import { Store } from '../core/store';
+import type { CustomEmoji } from '../core/types';
 import { Ui } from '../core/ui';
-import { Autofocus } from './shared';
+import { Autofocus, GuildIcon } from './shared';
 
 export interface PickerRequest {
   x: number;
   y: number;
+  /** Gets the emoji itself, or <:nome:id> for a server's custom emoji. */
   onPick: (emoji: string) => void;
   keepOpen?: boolean;
 }
 
-/** Global emoji picker popover (composer and reactions). */
+/** The hand that previews each skin tone in the tone menu. */
+const TONE_HAND = ['✋', '✋🏻', '✋🏼', '✋🏽', '✋🏾', '✋🏿'];
+
+interface Hover {
+  src: string;
+  label: string;
+  sub?: string;
+}
+
+/** Global emoji picker popover (composer and reactions). Every emoji is free to use. */
 @Component({
   selector: 'app-emoji-picker',
-  imports: [FormsModule, Autofocus],
+  imports: [FormsModule, Autofocus, GuildIcon],
   template: `
     @if (req(); as r) {
       <div class="menu-backdrop" (mousedown)="close()"></div>
       <div class="emoji-picker" #el [style.left.px]="pos().x" [style.top.px]="pos().y">
         <div class="ep-search">
           <input class="input" placeholder="Encontre o emoji perfeito" [ngModel]="query()" (ngModelChange)="query.set($event)" appAutofocus />
+          <div class="ep-tone">
+            <button class="ep-tone-btn" title="Tom de pele" aria-label="Tom de pele" (click)="toneOpen.set(!toneOpen())"><img [src]="url(hands[tone()])" alt="" /></button>
+            @if (toneOpen()) {
+              <div class="ep-tone-menu">
+                @for (h of hands; track $index) {
+                  <button [class.active]="tone() === $index" (click)="setTone($index)"><img [src]="url(h)" alt="" /></button>
+                }
+              </div>
+            }
+          </div>
         </div>
         <div class="ep-body">
-          <div class="ep-cats">
+          <div class="ep-cats scroller thin">
             <button [class.active]="!query() && cat() === 'recent'" (click)="jump('recent')" title="Recentes">🕘</button>
-            @for (c of categories; track c.id) {
+            @for (g of customGroups(); track g.id) {
+              <button class="ep-cat-guild" [class.active]="!query() && cat() === 'g' + g.id" (click)="jump('g' + g.id)" [title]="g.name">
+                <app-guild-icon [name]="g.name" [icon]="g.icon" [size]="28" />
+              </button>
+            }
+            @if (customGroups().length) {
+              <span class="ep-cats-sep"></span>
+            }
+            @for (c of categories(); track c.id) {
               <button [class.active]="!query() && cat() === c.id" (click)="jump(c.id)" [title]="c.label"><img [src]="url(c.icon)" alt="" /></button>
             }
           </div>
@@ -36,9 +67,13 @@ export interface PickerRequest {
               <div class="ep-section">
                 <div class="ep-title">Resultados</div>
                 <div class="ep-items">
+                  @for (e of customResults(); track e.id) {
+                    <button (click)="pickCustom(e)" (mouseenter)="hoverCustom(e)"><img [src]="custom(e.id)" [alt]="e.name" loading="lazy" /></button>
+                  }
                   @for (e of results(); track e.char) {
-                    <button (click)="pick(e.char)" (mouseenter)="hover.set(e)"><img [src]="url(e.char)" [alt]="e.char" loading="lazy" /></button>
-                  } @empty {
+                    <button (click)="pick(skin(e))" (mouseenter)="hoverEmoji(e)"><img [src]="url(skin(e))" [alt]="e.char" loading="lazy" /></button>
+                  }
+                  @if (!results().length && !customResults().length) {
                     <div class="ep-empty">Nenhum emoji encontrado.</div>
                   }
                 </div>
@@ -48,16 +83,26 @@ export interface PickerRequest {
                 <div class="ep-title">Usados recentemente</div>
                 <div class="ep-items">
                   @for (e of recent(); track e) {
-                    <button (click)="pick(e)"><img [src]="url(e)" [alt]="e" /></button>
+                    <button (click)="pick(e)" (mouseenter)="hoverRecent(e)"><img [src]="src(e)" [alt]="label(e)" /></button>
                   }
                 </div>
               </div>
-              @for (c of categories; track c.id) {
+              @for (g of customGroups(); track g.id) {
+                <div class="ep-section" [attr.data-cat]="'g' + g.id">
+                  <div class="ep-title">{{ g.name }}</div>
+                  <div class="ep-items">
+                    @for (e of g.emojis; track e.id) {
+                      <button (click)="pickCustom(e)" (mouseenter)="hoverCustom(e, g.name)"><img [src]="custom(e.id)" [alt]="e.name" loading="lazy" /></button>
+                    }
+                  </div>
+                </div>
+              }
+              @for (c of categories(); track c.id) {
                 <div class="ep-section" [attr.data-cat]="c.id">
                   <div class="ep-title">{{ c.label }}</div>
                   <div class="ep-items">
                     @for (e of c.emojis; track e.char) {
-                      <button (click)="pick(e.char)" (mouseenter)="hover.set(e)"><img [src]="url(e.char)" [alt]="e.char" loading="lazy" /></button>
+                      <button (click)="pick(skin(e))" (mouseenter)="hoverEmoji(e)"><img [src]="url(skin(e))" [alt]="e.char" loading="lazy" /></button>
                     }
                   </div>
                 </div>
@@ -67,7 +112,11 @@ export interface PickerRequest {
         </div>
         <div class="ep-footer">
           @if (hover(); as h) {
-            <img [src]="url(h.char)" alt="" /> <span>:{{ h.name }}:</span>
+            <img [src]="h.src" alt="" />
+            <span>{{ h.label }}</span>
+            @if (h.sub) {
+              <small>{{ h.sub }}</small>
+            }
           }
         </div>
       </div>
@@ -77,22 +126,44 @@ export interface PickerRequest {
 export class EmojiPicker {
   private ui = inject(Ui);
   private prefs = inject(Prefs);
+  private store = inject(Store);
   private el = viewChild<ElementRef<HTMLElement>>('el');
   private grid = viewChild<ElementRef<HTMLElement>>('grid');
-  readonly categories = EMOJI_CATEGORIES;
+  readonly categories = emojiCategories;
+  readonly hands = TONE_HAND;
   readonly req = this.ui.picker;
   readonly query = signal('');
   readonly cat = signal('recent');
-  readonly hover = signal<EmojiEntry | null>(null);
+  readonly hover = signal<Hover | null>(null);
+  readonly toneOpen = signal(false);
+  readonly tone = computed(() => this.prefs.data().skinTone);
   readonly pos = signal({ x: 0, y: 0 });
-  readonly results = computed(() => searchEmojis(this.query()));
+  readonly results = computed(() => (this.categories(), searchEmojis(this.query())));
   readonly recent = computed(() => this.prefs.data().recentEmojis);
+
+  /** Every server's emojis, each in its own section, like Discord — but all of them usable. */
+  readonly customGroups = computed(() =>
+    this.store
+      .guildList()
+      .filter((g) => g.emojis?.length)
+      .map((g) => ({ id: g.id, name: g.name, icon: g.icon, emojis: g.emojis! })),
+  );
+  readonly customResults = computed(() => {
+    const q = this.query().trim().toLowerCase().replace(/^:|:$/g, '');
+    if (!q) return [];
+    return this.store
+      .customEmojis()
+      .filter((e) => e.name.toLowerCase().includes(q))
+      .slice(0, 40);
+  });
 
   constructor() {
     effect(() => {
       const r = this.req();
       if (!r) return;
+      void loadEmojis();
       this.query.set('');
+      this.toneOpen.set(false);
       this.pos.set({ x: r.x, y: r.y });
       setTimeout(() => {
         const el = this.el()?.nativeElement;
@@ -108,6 +179,45 @@ export class EmojiPicker {
 
   url(e: string) {
     return twemojiUrl(e);
+  }
+
+  src(e: string) {
+    return emojiSrc(e);
+  }
+
+  label(e: string) {
+    return emojiLabel(e);
+  }
+
+  custom(id: number) {
+    return customEmojiUrl(id);
+  }
+
+  skin(e: EmojiEntry) {
+    return withSkin(e, this.tone());
+  }
+
+  setTone(t: number) {
+    this.prefs.set('skinTone', t);
+    this.toneOpen.set(false);
+  }
+
+  hoverEmoji(e: EmojiEntry) {
+    this.hover.set({ src: this.url(this.skin(e)), label: `:${e.name}:` });
+  }
+
+  hoverCustom(e: CustomEmoji, guild?: string) {
+    const g = guild ?? this.store.guilds()[(e as CustomEmoji & { guildId?: number }).guildId ?? 0]?.name;
+    this.hover.set({ src: this.custom(e.id), label: `:${e.name}:`, sub: g ? `de ${g}` : undefined });
+  }
+
+  hoverRecent(e: string) {
+    const entry = emojiEntry(e);
+    this.hover.set({ src: this.src(e), label: entry ? `:${entry.name}:` : this.label(e) });
+  }
+
+  pickCustom(e: CustomEmoji) {
+    this.pick(customToken(e));
   }
 
   pick(e: string) {

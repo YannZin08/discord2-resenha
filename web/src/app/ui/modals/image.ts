@@ -43,6 +43,42 @@ export function bannerImage(file: File): Promise<Blob> {
   return cropImage(file, 1360, 480, 'image/webp');
 }
 
+/** Most a custom emoji can weigh (the server checks it too). */
+export const MAX_EMOJI_IMAGE = 2 * 1024 * 1024;
+
+/** Custom emojis: scaled down to fit 128×128 without cropping. GIFs keep their animation. */
+export async function emojiImage(file: File): Promise<Blob> {
+  if (file.type === 'image/gif') return file;
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    const scale = Math.min(1, 128 / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const ctx = canvas.getContext('2d')!;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Falha ao processar a imagem.'))), 'image/png'),
+    );
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+/** Several images at once (custom emojis). */
+export function pickImages(): Promise<File[]> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.multiple = true;
+    input.accept = 'image/png,image/jpeg,image/gif,image/webp';
+    input.onchange = () => resolve([...(input.files ?? [])]);
+    input.click();
+  });
+}
+
 export function pickImage(): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');

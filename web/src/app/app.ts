@@ -1,4 +1,5 @@
 import { Component, HostListener, computed, effect, inject } from '@angular/core';
+import { loadEmojis } from './core/emoji';
 import { Nav } from './core/nav';
 import { Prefs } from './core/prefs';
 import { Session } from './core/session';
@@ -73,6 +74,10 @@ export class App {
   constructor() {
     void this.session.init();
     effect(() => applyTheme(this.prefs.data().theme, this.prefs.data().chatFont, this.prefs.data().accent));
+    // The full emoji list (for :nomes: and the picker) comes in once the app is open.
+    effect(() => {
+      if (this.store.ready()) void loadEmojis();
+    });
     effect(() => {
       document.documentElement.dataset['motion'] = this.prefs.data().reduceMotion ? 'reduced' : 'full';
     });

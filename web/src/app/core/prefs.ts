@@ -49,6 +49,8 @@ interface PrefsData {
   streamVolumes: Record<number, number>;
   compact: boolean;
   recentEmojis: string[];
+  /** Skin tone for people emojis in the picker: 0 = default yellow, 1–5 light to dark. */
+  skinTone: number;
   collapsed: Record<number, boolean>;
   theme: string;
   /** Accent color over the theme (buttons, mentions); null keeps the theme's own. */
@@ -74,6 +76,7 @@ const DEFAULTS: PrefsData = {
   streamVolumes: {},
   compact: false,
   recentEmojis: ['👍', '😂', '❤️', '😮', '😢', '🔥', '🎉', '👀'],
+  skinTone: 0,
   collapsed: {},
   theme: 'dark',
   accent: null,

@@ -1,6 +1,7 @@
 import { Injectable, effect, signal } from '@angular/core';
 import { Api } from './api';
 import { Gateway } from './gateway';
+import { plainEmojis } from './markdown';
 import { Nav } from './nav';
 import { Prefs } from './prefs';
 import { sounds } from './sounds';
@@ -96,7 +97,7 @@ export class Session {
     const ch = this.store.channels()[m.channelId];
     const author = this.store.nameIn(m.guildId, m.authorId);
     const where = ch?.guildId != null ? `#${ch.name} (${this.store.guilds()[ch.guildId]?.name ?? ''})` : channelLabel(ch, this.store.users(), me.id);
-    const body = m.type === 'call' ? 'Iniciou uma chamada' : m.content.replace(/<@(\d+)>/g, (_, id) => '@' + this.store.nameIn(m.guildId, +id)) || 'Enviou um anexo';
+    const body = m.type === 'call' ? 'Iniciou uma chamada' : plainEmojis(m.content).replace(/<@(\d+)>/g, (_, id) => '@' + this.store.nameIn(m.guildId, +id)) || 'Enviou um anexo';
     try {
       const n = new Notification(ch?.type === 'dm' ? author : `${author} em ${where}`, {
         body: body.slice(0, 200),
