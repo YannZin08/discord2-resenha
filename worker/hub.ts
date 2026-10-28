@@ -289,6 +289,9 @@ export class Hub extends DurableObject<Env> {
     r('POST', '/api/guilds/:guildId/emojis', (c) => this.createEmoji(c));
     r('PATCH', '/api/guilds/:guildId/emojis/:emojiId', (c) => this.renameEmoji(c));
     r('DELETE', '/api/guilds/:guildId/emojis/:emojiId', (c) => this.deleteEmoji(c));
+    r('POST', '/api/users/@me/emojis', (c) => this.createEmoji(c));
+    r('PATCH', '/api/users/@me/emojis/:emojiId', (c) => this.renameEmoji(c));
+    r('DELETE', '/api/users/@me/emojis/:emojiId', (c) => this.deleteEmoji(c));
     // Anyone can see any custom emoji, like Discord's CDN: messages carry them to other servers.
     r('GET', '/api/emojis/:emojiId', (c) => this.serveEmoji(c), true);
     r('HEAD', '/api/emojis/:emojiId', (c) => this.serveEmoji(c), true);
@@ -827,6 +830,7 @@ export class Hub extends DurableObject<Env> {
       presences,
       voiceStates: this.voiceStates((v) => (v.guildId != null ? guildSet.has(v.guildId) : allDmIds.has(v.channelId))),
       music: guildIds.map((g) => this.musicPayload(g)).filter((m) => m.track),
+      myEmojis: this.emojiList(0, uid),
     };
   }
 
@@ -1479,40 +1483,54 @@ export class Hub extends DurableObject<Env> {
   }
 
   // ---------------------------------------------------------------- custom emojis
-  // No slots and no Nitro: a server can have as many as it wants, animated ones included,
-  // and everyone can use every emoji of every server they're in, in any chat.
+  // No slots and no Nitro: as many as anyone wants, animated ones included. A server's emojis
+  // (guild_id = the server) work for all its members in any chat; someone's own emojis
+  // (guild_id = 0, user_id = them) work for them in any chat. Everyone sees both in messages.
+
+  /** A server's emojis, or with gid 0 someone's own. */
+  private emojiList(gid: number, uid = 0) {
+    const rows = gid
+      ? this.all('SELECT id, name, animated FROM emojis WHERE guild_id = ? ORDER BY created_at, id', gid)
+      : this.all('SELECT id, name, animated FROM emojis WHERE guild_id = 0 AND user_id = ? ORDER BY created_at, id', uid);
+    return rows.map((e) => ({ id: e.id as number, name: e.name as string, animated: !!e.animated }));
+  }
 
   private guildEmojis(gid: number) {
-    return this.all('SELECT id, name, animated FROM emojis WHERE guild_id = ? ORDER BY created_at, id', gid).map((e) => ({
-      id: e.id as number,
-      name: e.name as string,
-      animated: !!e.animated,
-    }));
+    return this.emojiList(gid);
   }
 
-  private broadcastEmojis(gid: number) {
-    this.broadcast(this.guildMembers(gid), 'GUILD_EMOJIS_UPDATE', { guildId: gid, emojis: this.guildEmojis(gid) });
+  private broadcastEmojis(gid: number, uid: number) {
+    if (gid) this.broadcast(this.guildMembers(gid), 'GUILD_EMOJIS_UPDATE', { guildId: gid, emojis: this.emojiList(gid) });
+    else this.broadcast([uid], 'USER_EMOJIS_UPDATE', { emojis: this.emojiList(0, uid) });
   }
 
-  private emojiName(v: unknown, gid: number, except = 0): string {
+  private emojiName(v: unknown, gid: number, uid: number, except = 0): string {
     const name = typeof v === 'string' ? v.trim().replace(/^:|:$/g, '') : '';
     if (!EMOJI_NAME.test(name)) throw new HttpError(400, 'O nome do emoji precisa ter de 2 a 32 letras, números ou _ (sem espaços nem acentos).');
-    if (this.one('SELECT 1 FROM emojis WHERE guild_id = ? AND name = ? AND id != ?', gid, name, except)) {
-      throw new HttpError(409, `Já existe um emoji :${name}: neste servidor.`);
-    }
+    const taken = gid
+      ? this.one('SELECT 1 FROM emojis WHERE guild_id = ? AND name = ? AND id != ?', gid, name, except)
+      : this.one('SELECT 1 FROM emojis WHERE guild_id = 0 AND user_id = ? AND name = ? AND id != ?', uid, name, except);
+    if (taken) throw new HttpError(409, `Já existe um emoji :${name}: ${gid ? 'neste servidor' : 'nos seus emojis'}.`);
     return name;
   }
 
-  private async createEmoji(c: Ctx) {
+  /** Where an emoji request points: a server the caller manages, or (gid 0) their own emojis. */
+  private emojiScope(c: Ctx): number {
+    if (c.params.guildId === undefined) return 0;
     const gid = toId(c.params.guildId);
     this.adminGuild(c.uid, gid);
+    return gid;
+  }
+
+  private async createEmoji(c: Ctx) {
+    const gid = this.emojiScope(c);
     const b = await c.body<{ name?: unknown; file?: unknown }>();
     const file = this.ownedUpload(b.file, c.uid, true);
     const up = this.one('SELECT size, mime FROM uploads WHERE key = ?', file)!;
     if (Number(up.size) > MAX_EMOJI_IMAGE) {
       throw new HttpError(413, `Um emoji pode ter até 2 MB e esse arquivo tem ${(Number(up.size) / 1024 / 1024).toFixed(1)} MB. Escolha uma imagem ou GIF menor.`);
     }
-    const name = this.emojiName(b.name, gid);
+    const name = this.emojiName(b.name, gid, c.uid);
     const id = newId();
     this.run(
       'INSERT INTO emojis (id, guild_id, name, file, animated, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -1524,33 +1542,33 @@ export class Hub extends DurableObject<Env> {
       c.uid,
       Date.now(),
     );
-    this.broadcastEmojis(gid);
+    this.broadcastEmojis(gid, c.uid);
     return { id, name, animated: up.mime === 'image/gif' };
   }
 
-  private emojiIn(gid: number, id: number): Row {
-    const e = this.one('SELECT * FROM emojis WHERE id = ? AND guild_id = ?', id, gid);
+  private emojiIn(gid: number, uid: number, id: number): Row {
+    const e = gid
+      ? this.one('SELECT * FROM emojis WHERE id = ? AND guild_id = ?', id, gid)
+      : this.one('SELECT * FROM emojis WHERE id = ? AND guild_id = 0 AND user_id = ?', id, uid);
     if (!e) throw new HttpError(404, 'Emoji não encontrado.');
     return e;
   }
 
   private async renameEmoji(c: Ctx) {
-    const gid = toId(c.params.guildId);
-    this.adminGuild(c.uid, gid);
-    const e = this.emojiIn(gid, toId(c.params.emojiId));
-    const name = this.emojiName((await c.body<{ name?: unknown }>()).name, gid, e.id as number);
+    const gid = this.emojiScope(c);
+    const e = this.emojiIn(gid, c.uid, toId(c.params.emojiId));
+    const name = this.emojiName((await c.body<{ name?: unknown }>()).name, gid, c.uid, e.id as number);
     this.run('UPDATE emojis SET name = ? WHERE id = ?', name, e.id);
-    this.broadcastEmojis(gid);
+    this.broadcastEmojis(gid, c.uid);
     return { id: e.id, name, animated: !!e.animated };
   }
 
   private deleteEmoji(c: Ctx) {
-    const gid = toId(c.params.guildId);
-    this.adminGuild(c.uid, gid);
-    const e = this.emojiIn(gid, toId(c.params.emojiId));
+    const gid = this.emojiScope(c);
+    const e = this.emojiIn(gid, c.uid, toId(c.params.emojiId));
     this.run('DELETE FROM emojis WHERE id = ?', e.id);
     this.releaseFiles([e.file as string]);
-    this.broadcastEmojis(gid);
+    this.broadcastEmojis(gid, c.uid);
     return { ok: true };
   }
 

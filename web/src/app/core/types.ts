@@ -214,6 +214,8 @@ export interface Ready {
   presences: Record<number, Status>;
   voiceStates: VoiceState[];
   music?: MusicState[];
+  /** My own emojis, usable in any chat. */
+  myEmojis?: CustomEmoji[];
 }
 
 export interface InviteInfo {

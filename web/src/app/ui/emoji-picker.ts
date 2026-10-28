@@ -7,7 +7,7 @@ import { Prefs } from '../core/prefs';
 import { Store } from '../core/store';
 import type { CustomEmoji } from '../core/types';
 import { Ui } from '../core/ui';
-import { Autofocus, GuildIcon } from './shared';
+import { Autofocus, Avatar, GuildIcon } from './shared';
 
 export interface PickerRequest {
   x: number;
@@ -29,7 +29,7 @@ interface Hover {
 /** Global emoji picker popover (composer and reactions). Every emoji is free to use. */
 @Component({
   selector: 'app-emoji-picker',
-  imports: [FormsModule, Autofocus, GuildIcon],
+  imports: [FormsModule, Autofocus, Avatar, GuildIcon],
   template: `
     @if (req(); as r) {
       <div class="menu-backdrop" (mousedown)="close()"></div>
@@ -50,9 +50,13 @@ interface Hover {
         <div class="ep-body">
           <div class="ep-cats scroller thin">
             <button [class.active]="!query() && cat() === 'recent'" (click)="jump('recent')" title="Recentes">🕘</button>
-            @for (g of customGroups(); track g.id) {
-              <button class="ep-cat-guild" [class.active]="!query() && cat() === 'g' + g.id" (click)="jump('g' + g.id)" [title]="g.name">
-                <app-guild-icon [name]="g.name" [icon]="g.icon" [size]="28" />
+            @for (g of customGroups(); track g.key) {
+              <button class="ep-cat-guild" [class.active]="!query() && cat() === g.key" (click)="jump(g.key)" [title]="g.name">
+                @if (g.mine) {
+                  <app-avatar [user]="store.me()" [size]="28" />
+                } @else {
+                  <app-guild-icon [name]="g.name" [icon]="g.icon" [size]="28" />
+                }
               </button>
             }
             @if (customGroups().length) {
@@ -87,8 +91,8 @@ interface Hover {
                   }
                 </div>
               </div>
-              @for (g of customGroups(); track g.id) {
-                <div class="ep-section" [attr.data-cat]="'g' + g.id">
+              @for (g of customGroups(); track g.key) {
+                <div class="ep-section" [attr.data-cat]="g.key">
                   <div class="ep-title">{{ g.name }}</div>
                   <div class="ep-items">
                     @for (e of g.emojis; track e.id) {
@@ -126,7 +130,7 @@ interface Hover {
 export class EmojiPicker {
   private ui = inject(Ui);
   private prefs = inject(Prefs);
-  private store = inject(Store);
+  readonly store = inject(Store);
   private el = viewChild<ElementRef<HTMLElement>>('el');
   private grid = viewChild<ElementRef<HTMLElement>>('grid');
   readonly categories = emojiCategories;
@@ -141,13 +145,17 @@ export class EmojiPicker {
   readonly results = computed(() => (this.categories(), searchEmojis(this.query())));
   readonly recent = computed(() => this.prefs.data().recentEmojis);
 
-  /** Every server's emojis, each in its own section, like Discord — but all of them usable. */
-  readonly customGroups = computed(() =>
-    this.store
-      .guildList()
-      .filter((g) => g.emojis?.length)
-      .map((g) => ({ id: g.id, name: g.name, icon: g.icon, emojis: g.emojis! })),
-  );
+  /** My own emojis, then every server's, each in its own section — all of them usable. */
+  readonly customGroups = computed(() => {
+    const mine = this.store.myEmojis();
+    return [
+      ...(mine.length ? [{ key: 'mine', name: 'Seus emojis', icon: null, mine: true, emojis: mine }] : []),
+      ...this.store
+        .guildList()
+        .filter((g) => g.emojis?.length)
+        .map((g) => ({ key: 'g' + g.id, name: g.name, icon: g.icon, mine: false, emojis: g.emojis! })),
+    ];
+  });
   readonly customResults = computed(() => {
     const q = this.query().trim().toLowerCase().replace(/^:|:$/g, '');
     if (!q) return [];
@@ -206,9 +214,9 @@ export class EmojiPicker {
     this.hover.set({ src: this.url(this.skin(e)), label: `:${e.name}:` });
   }
 
-  hoverCustom(e: CustomEmoji, guild?: string) {
-    const g = guild ?? this.store.guilds()[(e as CustomEmoji & { guildId?: number }).guildId ?? 0]?.name;
-    this.hover.set({ src: this.custom(e.id), label: `:${e.name}:`, sub: g ? `de ${g}` : undefined });
+  hoverCustom(e: CustomEmoji & { guildId?: number | null }, from?: string) {
+    const where = from ?? (e.guildId === null ? 'Seus emojis' : this.store.guilds()[e.guildId ?? 0]?.name);
+    this.hover.set({ src: this.custom(e.id), label: `:${e.name}:`, sub: where ? (where === 'Seus emojis' ? where : `de ${where}`) : undefined });
   }
 
   hoverRecent(e: string) {

@@ -293,13 +293,20 @@ export class Composer {
     } else {
       if (query.length < 2) return this.suggestions.set([]);
       this.acTitle.set(`Emojis correspondentes a :${q}`);
-      // Custom emojis of every server I'm in (this one's first), then the Unicode ones.
+      // Custom emojis (this server's, then mine, then other servers'), then the Unicode ones.
+      const rank = (e: { guildId: number | null }) => (e.guildId != null && e.guildId === c.guildId ? 0 : e.guildId == null ? 1 : 2);
       const custom = this.store
         .customEmojis()
         .filter((e) => e.name.toLowerCase().includes(query))
-        .sort((a, b) => Number(b.guildId === c.guildId) - Number(a.guildId === c.guildId) || Number(!a.name.toLowerCase().startsWith(query)) - Number(!b.name.toLowerCase().startsWith(query)))
+        .sort((a, b) => rank(a) - rank(b) || Number(!a.name.toLowerCase().startsWith(query)) - Number(!b.name.toLowerCase().startsWith(query)))
         .slice(0, 5)
-        .map((e) => ({ key: 'e' + e.id, label: `:${e.name}:`, sub: this.store.guilds()[e.guildId]?.name, insert: this.emojiText(customToken(e)) + ' ', emoji: customToken(e) }));
+        .map((e) => ({
+          key: 'e' + e.id,
+          label: `:${e.name}:`,
+          sub: e.guildId == null ? 'Seus emojis' : this.store.guilds()[e.guildId]?.name,
+          insert: this.emojiText(customToken(e)) + ' ',
+          emoji: customToken(e),
+        }));
       list = [...custom, ...searchEmojis(query, 10 - custom.length).map((e) => ({ key: e.char, label: `:${e.name}:`, insert: e.char + ' ', emoji: e.char }))];
     }
     this.suggestions.set(list);

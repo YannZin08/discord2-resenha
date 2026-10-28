@@ -59,10 +59,17 @@ function guildId0(store: Store, emojiId: number): number | null {
   return store.customEmojis().find((e) => e.id === emojiId)?.guildId ?? null;
 }
 
-/** A custom emoji by :name:, this server's first, then any other server's I'm in. */
-export function customByName(store: Store, guildId: number | null, name: string) {
-  const all = store.customEmojis();
-  return all.find((e) => e.name === name && e.guildId === guildId) ?? all.find((e) => e.name === name);
+/**
+ * A custom emoji by :name:, in the order a typed :name: finds it: this server's, then my own,
+ * then (unless `others` is false) any other server's I'm in.
+ */
+export function customByName(store: Store, guildId: number | null, name: string, others = true) {
+  const all = store.customEmojis().filter((e) => e.name === name);
+  return (
+    (guildId != null ? all.find((e) => e.guildId === guildId) : undefined) ??
+    all.find((e) => e.guildId === null) ??
+    (others ? all[0] : undefined)
+  );
 }
 
 /** Converts typed @username / #channel back to <@id> / <#id>, and :shortcodes: to emojis. */
@@ -71,10 +78,10 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
   const byName = new Map<string, number>();
   const ids = guildId != null ? Object.keys(store.members()[guildId] ?? {}).map(Number) : recipients;
   for (const id of ids) if (users[id]) byName.set(users[id].username.toLowerCase(), id);
-  // :nome: → this server's emoji, else the Unicode one (:joy:), else another server's.
-  // Names already inside a <:nome:id> token are left alone.
+  // :nome: → this server's emoji, else my own, else the Unicode one (:joy:), else another
+  // server's. Names already inside a <:nome:id> token are left alone.
   let out = text.replace(/(?<!<a?):([A-Za-z0-9_+-]{2,40}):/g, (m, name: string) => {
-    const own = store.customEmojis().find((e) => e.name === name && e.guildId === guildId);
+    const own = customByName(store, guildId, name, false);
     if (own) return customToken(own);
     const unicode = shortcodeEmoji(name);
     if (unicode) return unicode;

@@ -3,15 +3,15 @@ import { FormsModule } from '@angular/forms';
 import { Api } from '../../core/api';
 import { Nav } from '../../core/nav';
 import { Store } from '../../core/store';
-import { customEmojiUrl } from '../../core/custom-emoji';
-import type { BotInfo, CustomEmoji, Role, User } from '../../core/types';
+import type { BotInfo, Role, User } from '../../core/types';
 import { Ui } from '../../core/ui';
 import { Voice } from '../../core/voice';
 import { fileUrl, formatLongDate } from '../../core/util';
 import { userMenuItems } from '../menus';
 import { Avatar, GuildIcon, Icon } from '../shared';
 import { confirmDialog, promptDialog } from './dialogs';
-import { MAX_EMOJI_IMAGE, emojiImage, pickImage, pickImages, squareImage } from './image';
+import { pickImage, squareImage } from './image';
+import { EmojiManager } from '../emoji-manager';
 
 type Section = 'overview' | 'roles' | 'emojis' | 'bots' | 'members' | 'invites' | 'bans';
 
@@ -19,7 +19,7 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
 
 @Component({
   selector: 'app-guild-settings',
-  imports: [FormsModule, Icon, GuildIcon, Avatar],
+  imports: [FormsModule, Icon, GuildIcon, Avatar, EmojiManager],
   template: `
     @if (guild(); as g) {
       <div class="settings-layer">
@@ -195,43 +195,7 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
                   Envie quantos emojis quiser, inclusive GIFs animados: aqui não tem limite de espaços nem Nitro. Todo mundo do servidor pode usar
                   esses emojis em qualquer servidor e nas mensagens diretas. Para usar, digite <code>:nome:</code> ou escolha no seletor de emojis.
                 </p>
-                <div class="settings-actions">
-                  <button class="btn btn-brand" [disabled]="emojiBusy()" (click)="uploadEmojis()">
-                    {{ emojiBusy() ? 'Enviando ' + emojiBusy() + '...' : 'Enviar emoji' }}
-                  </button>
-                </div>
-                <p class="hint">PNG, JPG, WebP ou GIF de até 2 MB. Dá para escolher vários arquivos de uma vez; o nome vem do arquivo.</p>
-                @if (g.emojis?.length) {
-                  <h3 class="settings-h3">{{ emojiCount() }}</h3>
-                  <div class="emoji-table">
-                    @for (e of g.emojis; track e.id) {
-                      <div class="emoji-row">
-                        <img class="emoji-row-img" [src]="emojiUrl(e.id)" [alt]="e.name" />
-                        <span class="emoji-row-colon">:</span>
-                        <input
-                          class="input emoji-row-name"
-                          maxlength="32"
-                          [value]="e.name"
-                          (keydown.enter)="$any($event.target).blur()"
-                          (blur)="renameEmoji(e, $any($event.target))"
-                          aria-label="Nome do emoji"
-                        />
-                        <span class="emoji-row-colon">:</span>
-                        @if (e.animated) {
-                          <span class="emoji-row-tag">GIF</span>
-                        }
-                        <button class="icon-btn emoji-row-del" title="Excluir emoji" aria-label="Excluir emoji" (click)="deleteEmoji(e)">
-                          <app-icon name="trash" [size]="18" />
-                        </button>
-                      </div>
-                    }
-                  </div>
-                } @else {
-                  <div class="emoji-empty">
-                    <span>😶</span>
-                    <p>Este servidor ainda não tem emojis próprios. Envie o primeiro!</p>
-                  </div>
-                }
+                <app-emoji-manager [path]="'/guilds/' + g.id + '/emojis'" [emojis]="g.emojis ?? []" empty="Este servidor ainda não tem emojis próprios. Envie o primeiro!" />
               }
               @case ('members') {
                 <h2>Membros do servidor</h2>
@@ -336,75 +300,6 @@ export class GuildSettings {
     this.name = g.name;
     this.systemChannelId = g.systemChannelId;
     this.iconPreview.set(g.icon ? fileUrl(g.icon, 'icon') : null);
-  }
-
-  readonly emojiBusy = signal('');
-  readonly emojiCount = computed(() => {
-    const list = this.guild()?.emojis ?? [];
-    const animated = list.filter((e) => e.animated).length;
-    const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
-    return animated ? `${n(list.length, 'emoji', 'emojis')} · ${n(animated, 'animado', 'animados')}` : n(list.length, 'emoji', 'emojis');
-  });
-
-  emojiUrl(id: number) {
-    return customEmojiUrl(id);
-  }
-
-  /** A free :name: from the file name ("Gato Feliz.gif" → gato_feliz, then gato_feliz2...). */
-  private emojiNameFor(file: File, taken: Set<string>): string {
-    let base = file.name
-      .replace(/\.[^.]+$/, '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^A-Za-z0-9_]+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .slice(0, 28);
-    if (base.length < 2) base = 'emoji';
-    let name = base;
-    for (let i = 2; taken.has(name.toLowerCase()); i++) name = `${base}${i}`;
-    taken.add(name.toLowerCase());
-    return name;
-  }
-
-  async uploadEmojis() {
-    const files = await pickImages();
-    if (!files.length) return;
-    const taken = new Set((this.guild()?.emojis ?? []).map((e) => e.name.toLowerCase()));
-    let done = 0;
-    for (const [i, f] of files.entries()) {
-      this.emojiBusy.set(files.length > 1 ? `${i + 1} de ${files.length}` : 'emoji');
-      try {
-        if (f.size > MAX_EMOJI_IMAGE && f.type === 'image/gif') throw new Error(`"${f.name}" passa de 2 MB. Escolha um GIF menor.`);
-        const blob = await emojiImage(f);
-        if (blob.size > MAX_EMOJI_IMAGE) throw new Error(`"${f.name}" passa de 2 MB. Escolha uma imagem menor.`);
-        const { key } = await this.api.upload(blob, f.type === 'image/gif' ? f.name : 'emoji.png');
-        await this.api.post(`/guilds/${this.guildId()}/emojis`, { name: this.emojiNameFor(f, taken), file: key });
-        done++;
-      } catch (e) {
-        this.ui.error(e);
-      }
-    }
-    this.emojiBusy.set('');
-    if (done) this.ui.toast(done === 1 ? 'Emoji adicionado.' : `${done} emojis adicionados.`, 'success');
-  }
-
-  renameEmoji(e: CustomEmoji, input: HTMLInputElement) {
-    const name = input.value.trim().replace(/^:|:$/g, '');
-    if (name === e.name) return;
-    this.api.patch(`/guilds/${this.guildId()}/emojis/${e.id}`, { name }).catch((err) => {
-      input.value = e.name;
-      this.ui.error(err);
-    });
-  }
-
-  async deleteEmoji(e: CustomEmoji) {
-    const ok = await confirmDialog(this.ui, {
-      title: 'Excluir emoji',
-      body: `Excluir :${e.name}:? Ele some das mensagens e reações onde foi usado.`,
-      confirmText: 'Excluir',
-      danger: true,
-    });
-    if (ok) this.api.delete(`/guilds/${this.guildId()}/emojis/${e.id}`).catch((err) => this.ui.error(err));
   }
 
   async chooseIcon() {

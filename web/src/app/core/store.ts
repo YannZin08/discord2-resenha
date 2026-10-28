@@ -4,6 +4,7 @@ import type {
   Channel,
   Guild,
   Activity,
+  CustomEmoji,
   GuildPayload,
   Member,
   Message,
@@ -68,10 +69,14 @@ export class Store {
       .sort((a, b) => (b.lastMessageId ?? b.id) - (a.lastMessageId ?? a.id)),
   );
 
-  /** Every custom emoji of every server I'm in, in server order: all usable anywhere. */
-  readonly customEmojis = computed(() =>
-    this.guildList().flatMap((g) => (g.emojis ?? []).map((e) => ({ ...e, guildId: g.id }))),
-  );
+  /** My own emojis (not tied to a server). */
+  readonly myEmojis = signal<CustomEmoji[]>([]);
+
+  /** Every custom emoji I can use anywhere: mine (guildId null), then each server's in order. */
+  readonly customEmojis = computed<(CustomEmoji & { guildId: number | null })[]>(() => [
+    ...this.myEmojis().map((e) => ({ ...e, guildId: null })),
+    ...this.guildList().flatMap((g) => (g.emojis ?? []).map((e) => ({ ...e, guildId: g.id }))),
+  ]);
 
   readonly myVoice = computed(() => {
     const sid = this.sessionId();
@@ -146,6 +151,7 @@ export class Store {
     this.readStates.set(Object.fromEntries(r.readStates.map((x) => [x.channelId, x])));
     this.voiceStates.set(Object.fromEntries(r.voiceStates.map((v) => [v.sessionId, v])));
     this.music.set(Object.fromEntries((r.music ?? []).map((m) => [m.guildId, { ...m, receivedAt: Date.now() }])));
+    this.myEmojis.set(r.myEmojis ?? []);
     // History may have moved on while we were disconnected.
     for (const [id, list] of this.lists) {
       if (!channels[id]) this.lists.delete(id);
@@ -217,6 +223,9 @@ export class Store {
         break;
       case 'GUILD_UPDATE':
         this.guilds.update((all) => (all[d.id] ? { ...all, [d.id]: { ...all[d.id], ...d } } : all));
+        break;
+      case 'USER_EMOJIS_UPDATE':
+        this.myEmojis.set(d.emojis);
         break;
       case 'GUILD_EMOJIS_UPDATE':
         this.guilds.update((all) => (all[d.guildId] ? { ...all, [d.guildId]: { ...all[d.guildId], emojis: d.emojis } } : all));

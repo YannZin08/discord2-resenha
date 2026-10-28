@@ -8,6 +8,7 @@ import { Ui } from '../../core/ui';
 import { Voice } from '../../core/voice';
 import { avatarUrl, bannerImage, defaultAvatarColor, elapsedLabel } from '../../core/util';
 import { detectorScript } from '../../core/game-detector';
+import { EmojiManager } from '../emoji-manager';
 import { ProfileCard } from '../profile-card';
 import { Avatar, Icon } from '../shared';
 import { confirmDialog, promptDialog } from './dialogs';
@@ -17,7 +18,7 @@ import { MAX_PROFILE_IMAGE, bannerImage as cropBanner, pickImage, squareImage } 
 import { StreamSettings } from '../../core/prefs';
 import { ACCENTS, THEMES } from '../../core/themes';
 
-type Section = 'account' | 'profile' | 'activity' | 'appearance' | 'voice' | 'stream' | 'notifications';
+type Section = 'account' | 'profile' | 'emojis' | 'activity' | 'appearance' | 'voice' | 'stream' | 'notifications';
 
 /** One-click custom statuses for when you aren't playing anything. */
 const QUICK_STATUSES = ['Só de boa', 'Estudando', 'Trabalhando', 'Ouvindo música', 'Assistindo um filme', 'Volto já'];
@@ -26,7 +27,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
 
 @Component({
   selector: 'app-user-settings',
-  imports: [FormsModule, Icon, Avatar, StreamOptions, VoiceSettings, ProfileCard],
+  imports: [FormsModule, Icon, Avatar, StreamOptions, VoiceSettings, ProfileCard, EmojiManager],
   template: `
     @if (store.me(); as me) {
       <div class="settings-layer">
@@ -35,6 +36,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
             <h3>Configurações de usuário</h3>
             <button [class.active]="section() === 'account'" (click)="section.set('account')">Minha conta</button>
             <button [class.active]="section() === 'profile'" (click)="section.set('profile')">Perfis</button>
+            <button [class.active]="section() === 'emojis'" (click)="section.set('emojis')">Meus emojis</button>
             <button [class.active]="section() === 'activity'" (click)="section.set('activity')">Atividade</button>
             <h3>Configurações do app</h3>
             <button [class.active]="section() === 'appearance'" (click)="section.set('appearance')">Aparência</button>
@@ -243,6 +245,15 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                   <input type="checkbox" class="switch" [ngModel]="prefs.data().reduceMotion" (ngModelChange)="prefs.set('reduceMotion', $event)" />
                 </label>
                 <p class="hint">O tema e essas opções ficam salvos neste dispositivo.</p>
+              }
+              @case ('emojis') {
+                <h2>Meus emojis</h2>
+                <p class="hint">
+                  Emojis só seus, que não dependem de servidor: você usa em qualquer servidor e nas mensagens diretas, e todo mundo vê nas suas
+                  mensagens e reações. Sem limite e sem Nitro, inclusive GIFs animados. Para usar, digite <code>:nome:</code> ou abra o seletor de
+                  emojis, na seção "Seus emojis".
+                </p>
+                <app-emoji-manager path="/users/@me/emojis" [emojis]="store.myEmojis()" empty="Você ainda não tem emojis seus. Envie o primeiro!" />
               }
               @case ('activity') {
                 <h2>Atividade</h2>
