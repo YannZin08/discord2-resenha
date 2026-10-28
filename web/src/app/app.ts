@@ -72,7 +72,7 @@ export class App {
 
   constructor() {
     void this.session.init();
-    effect(() => applyTheme(this.prefs.data().theme, this.prefs.data().chatFont));
+    effect(() => applyTheme(this.prefs.data().theme, this.prefs.data().chatFont, this.prefs.data().accent));
     effect(() => {
       document.documentElement.dataset['motion'] = this.prefs.data().reduceMotion ? 'reduced' : 'full';
     });

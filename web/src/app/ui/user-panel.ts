@@ -52,7 +52,7 @@ import { Tip } from './tooltip';
           <div class="up-names">
             <div class="up-display">{{ me.displayName }}</div>
             <div class="up-sub">
-              <span class="up-sub-a">{{ me.customStatus || statusLabel() }}</span>
+              <span class="up-sub-a">{{ myActivity() ? 'Jogando ' + myActivity()!.name : me.customStatus || statusLabel() }}</span>
               <span class="up-sub-b">{{ me.username }}</span>
             </div>
           </div>
@@ -83,6 +83,7 @@ export class UserPanel {
     return me ? this.store.presences()[me.id] ?? (me.status as Status) ?? 'online' : 'offline';
   });
   readonly statusLabel = computed(() => STATUS_LABELS[this.myStatus()]);
+  readonly myActivity = computed(() => this.store.activityOf(this.store.me()?.id ?? 0));
   readonly voiceWhere = computed(() => {
     const c = this.store.channels()[this.voice.channelId() ?? 0];
     if (!c) return '';

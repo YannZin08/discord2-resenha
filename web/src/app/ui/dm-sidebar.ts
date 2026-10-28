@@ -48,6 +48,8 @@ import { Tip } from './tooltip';
             <div class="dm-name">{{ label(c) }}</div>
             @if (c.type === 'group_dm') {
               <div class="dm-sub">{{ c.recipients?.length }} membros</div>
+            } @else if (store.activityOf(store.dmPartner(c)?.id ?? 0); as a) {
+              <div class="dm-sub activity-line">Jogando <strong>{{ a.name }}</strong></div>
             } @else if (store.dmPartner(c)?.customStatus; as cs) {
               <div class="dm-sub">{{ cs }}</div>
             }

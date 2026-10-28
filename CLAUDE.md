@@ -11,6 +11,8 @@ App de comunicação no estilo Discord (servidores, canais de texto/voz, DMs, am
 - `web/` — Angular 21, componentes standalone, zoneless, estado em signals. `core/` (store, gateway, voice, mic, prefs…) e `ui/` (componentes; modais em `ui/modals/`). Estilos globais em `web/src/styles.css` com temas por `[data-theme]`.
 - Voz/vídeo: WebRTC em malha (`core/voice.ts`), microfone processado em `core/mic.ts` (RNNoise + portão em `web/public/voice-gate.js`).
 - Bot de música: o YouTube toca escondido no navegador de cada pessoa (`ui/music-player.ts`), sincronizado pelo relógio do servidor; o bot aparece como "falando" e o volume é o "Volume do usuário" dele.
+- Atividade ("Jogando X"): coluna `activity` em `users`, `PUT /api/users/@me/activity`. Manual fica até parar; a do detector expira em 2 min sem novo aviso. O detector do Windows é um `.cmd` gerado em `web/src/app/core/game-detector.ts` (Steam pelo registro + lista de processos), com chave própria (`Authorization: Activity <token>`) que só vale nessa rota.
+- Temas coloridos: cores em `core/themes.ts` (degradê e janelas); o CSS só tem um bloco por tom (`[data-tone]`). Cor de destaque troca `--brand`.
 - Bots personalizados: `Authorization: Bot <token>` na REST e no gateway. Exemplo em `examples/bot-exemplo.mjs`.
 
 ## Comandos

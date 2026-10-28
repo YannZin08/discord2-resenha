@@ -120,7 +120,12 @@ const MIGRATIONS = [
   'ALTER TABLE users ADD COLUMN banner TEXT',
   "ALTER TABLE users ADD COLUMN pronouns TEXT NOT NULL DEFAULT ''",
   'ALTER TABLE users ADD COLUMN theme_colors TEXT',
+  'ALTER TABLE users ADD COLUMN activity TEXT',
+  'ALTER TABLE users ADD COLUMN activity_token TEXT',
 ];
+
+/** How long a game the detector reported stays up without a new report. */
+const AUTO_ACTIVITY_MS = 2 * 60_000;
 
 /** The first accounts of the app get the "Pioneiro" badge. */
 const PIONEER_ACCOUNTS = 100;
@@ -165,12 +170,21 @@ interface Ctx {
   body<T = Row>(): Promise<T>;
 }
 type Handler = (c: Ctx) => unknown;
+interface Activity {
+  name: string;
+  since: number;
+  /** Detector reports expire at this time; manual ones have none. */
+  until: number | null;
+}
+
 interface Route {
   method: string;
   re: RegExp;
   keys: string[];
   handler: Handler;
   public: boolean;
+  /** Also accepts the game detector's "Authorization: Activity <token>". */
+  activity?: boolean;
 }
 
 const placeholders = (n: number) => Array(n).fill('?').join(',');
@@ -224,7 +238,7 @@ export class Hub extends DurableObject<Env> {
   // ---------------------------------------------------------------- HTTP
 
   private registerRoutes() {
-    const r = (method: string, path: string, handler: Handler, pub = false) => {
+    const r = (method: string, path: string, handler: Handler, pub = false, activity = false) => {
       const keys: string[] = [];
       const re = new RegExp(
         '^' +
@@ -234,7 +248,7 @@ export class Hub extends DurableObject<Env> {
           }) +
           '$',
       );
-      this.routes.push({ method, re, keys, handler, public: pub });
+      this.routes.push({ method, re, keys, handler, public: pub, activity });
     };
     r('POST', '/api/auth/register', (c) => this.register(c), true);
     r('POST', '/api/auth/login', (c) => this.login(c), true);
@@ -242,6 +256,8 @@ export class Hub extends DurableObject<Env> {
     r('GET', '/api/auth/me', (c) => this.selfUser(c.uid));
     r('PATCH', '/api/users/@me', (c) => this.updateMe(c));
     r('POST', '/api/users/@me/password', (c) => this.changePassword(c));
+    r('PUT', '/api/users/@me/activity', (c) => this.setActivity(c), false, true);
+    r('POST', '/api/users/@me/activity-token', (c) => this.newActivityToken(c));
     r('GET', '/api/users/:userId/profile', (c) => this.userProfile(c));
     r('POST', '/api/upload', (c) => this.upload(c));
     // File keys are random 128-bit ids, so links work like Discord's CDN links.
@@ -312,7 +328,7 @@ export class Hub extends DurableObject<Env> {
         if (!m) continue;
         const params: Record<string, string> = {};
         route.keys.forEach((k, i) => (params[k] = decodeURIComponent(m[i + 1])));
-        const uid = this.sessionUser(req);
+        const uid = this.sessionUser(req, !!route.activity);
         if (!uid && !route.public) throw new HttpError(401, 'Faça login para continuar.');
         let parsed: unknown;
         const ctx: Ctx = {
@@ -345,12 +361,19 @@ export class Hub extends DurableObject<Env> {
     }
   }
 
-  private sessionUser(req: Request): number | null {
+  private sessionUser(req: Request, activityRoute = false): number | null {
     // Bots authenticate like Discord bots: "Authorization: Bot <token>".
     const auth = req.headers.get('authorization')?.match(/^Bot\s+(\S+)$/i);
     if (auth) {
       const row = this.one('SELECT bot_id FROM bot_tokens WHERE token = ?', auth[1]);
       return row ? (row.bot_id as number) : null;
+    }
+    // The game detector on someone's PC can only report what they're playing.
+    const detector = req.headers.get('authorization')?.match(/^Activity\s+(\S+)$/i);
+    if (detector) {
+      if (!activityRoute) return null;
+      const row = this.one('SELECT id FROM users WHERE activity_token = ?', detector[1]);
+      return row ? (row.id as number) : null;
     }
     const token = parseCookies(req.headers.get('cookie'))[COOKIE];
     if (!token) return null;
@@ -389,6 +412,7 @@ export class Hub extends DurableObject<Env> {
       themeColors: u.theme_colors ? (JSON.parse(u.theme_colors as string) as [string, string]) : null,
       about: u.about as string,
       customStatus: u.custom_status as string,
+      activity: u.activity ? (JSON.parse(u.activity as string) as Activity) : null,
       createdAt: u.created_at as number,
       bot: !!u.bot,
     };
@@ -972,6 +996,39 @@ export class Hub extends DurableObject<Env> {
       this.sessions.delete(token);
     }
     return json({ ok: true }, 200, { 'set-cookie': this.sessionCookie(c.req, null) });
+  }
+
+  /**
+   * What someone is playing, shown as "Jogando X". Set by hand (stays until cleared) or by
+   * the game detector (auto: expires unless it keeps reporting, and never clears a manual one).
+   */
+  private async setActivity(c: Ctx) {
+    const b = await c.body<{ name?: unknown; auto?: unknown }>();
+    const auto = b.auto === true;
+    const u = this.one('SELECT activity FROM users WHERE id = ?', c.uid)!;
+    const cur = u.activity ? (JSON.parse(u.activity as string) as Activity) : null;
+    const name = b.name == null || b.name === '' ? null : str(b.name, 'Nome do jogo', 1, 64);
+    let next: Activity | null;
+    if (!name) next = auto && cur && !cur.until ? cur : null;
+    else if (auto && cur && !cur.until && cur.name !== name) next = { name, since: Date.now(), until: Date.now() + AUTO_ACTIVITY_MS };
+    else next = { name, since: cur?.name === name ? cur.since : Date.now(), until: auto ? Date.now() + AUTO_ACTIVITY_MS : null };
+    if (JSON.stringify(next) === JSON.stringify(cur)) return { activity: cur };
+    this.run('UPDATE users SET activity = ? WHERE id = ?', next ? JSON.stringify(next) : null, c.uid);
+    const row = this.one('SELECT * FROM users WHERE id = ?', c.uid)!;
+    this.broadcast(
+      this.relatedUserIds(c.uid).filter((id) => id !== c.uid),
+      'USER_UPDATE',
+      this.pub(row),
+    );
+    this.broadcast([c.uid], 'USER_UPDATE', this.selfUser(c.uid));
+    return { activity: next };
+  }
+
+  /** A new key for the game detector; the old one stops working. */
+  private newActivityToken(c: Ctx) {
+    const token = randomToken();
+    this.run('UPDATE users SET activity_token = ? WHERE id = ?', token, c.uid);
+    return { token };
   }
 
   private async updateMe(c: Ctx) {

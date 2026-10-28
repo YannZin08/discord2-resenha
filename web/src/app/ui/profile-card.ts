@@ -6,7 +6,7 @@ import { Nav } from '../core/nav';
 import { Store } from '../core/store';
 import type { User } from '../core/types';
 import { MenuItem, Ui } from '../core/ui';
-import { bannerImage, channelLabel, defaultAvatarColor } from '../core/util';
+import { bannerImage, channelLabel, defaultAvatarColor, elapsedLabel } from '../core/util';
 import { Voice } from '../core/voice';
 import { userMenuItems } from './menus';
 import { Avatar, Icon } from './shared';
@@ -113,6 +113,18 @@ const BADGES: Record<string, Badge> = {
             <p class="profile-about" [innerHTML]="aboutHtml()"></p>
           </div>
         }
+        @if (store.activityOf(u.id); as a) {
+          <div class="profile-call profile-activity">
+            <div class="pc-head">Jogando</div>
+            <div class="pc-body">
+              <span class="activity-icon small"><app-icon name="game" [size]="24" /></span>
+              <div class="pc-text">
+                <div class="pc-channel"><span>{{ a.name }}</span></div>
+                <div class="pc-sub">{{ elapsed(a.since, store.now()) }}</div>
+              </div>
+            </div>
+          </div>
+        }
         @if (call(); as c) {
           <div class="profile-call">
             <div class="pc-head">{{ c.streaming ? 'Ao vivo' : 'Em voz' }}</div>
@@ -173,6 +185,7 @@ export class ProfileCard {
   readonly preview = input(false);
 
   readonly store = inject(Store);
+  readonly elapsed = elapsedLabel;
   readonly voice = inject(Voice);
   private ui = inject(Ui);
   private api = inject(Api);

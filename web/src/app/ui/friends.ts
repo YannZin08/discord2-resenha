@@ -76,7 +76,11 @@ type Tab = 'online' | 'all' | 'pending' | 'blocked' | 'add';
                         Bloqueado
                       }
                       @default {
-                        {{ r.user.customStatus || statusLabel(r.user.id) }}
+                        @if (store.activityOf(r.user.id); as a) {
+                          <span class="activity-line">Jogando <strong>{{ a.name }}</strong></span>
+                        } @else {
+                          {{ r.user.customStatus || statusLabel(r.user.id) }}
+                        }
                       }
                     }
                   </div>

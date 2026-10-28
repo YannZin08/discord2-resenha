@@ -85,6 +85,15 @@ export function formatTooltipDate(ts: number): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** How long since a moment, Discord-style: "há 5 min", "há 1 h 20 min". */
+export function elapsedLabel(since: number, now = Date.now()): string {
+  const min = Math.max(0, Math.floor((now - since) / 60_000));
+  if (min < 1) return 'agora mesmo';
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  return min % 60 ? `há ${h} h ${min % 60} min` : `há ${h} h`;
+}
+
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1).replace('.', ',')} KB`;

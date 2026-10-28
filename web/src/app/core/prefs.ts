@@ -51,6 +51,8 @@ interface PrefsData {
   recentEmojis: string[];
   collapsed: Record<number, boolean>;
   theme: string;
+  /** Accent color over the theme (buttons, mentions); null keeps the theme's own. */
+  accent: string | null;
   chatFont: number;
   /** Turns off the click / selection / entrance animations. */
   reduceMotion: boolean;
@@ -74,6 +76,7 @@ const DEFAULTS: PrefsData = {
   recentEmojis: ['👍', '😂', '❤️', '😮', '😢', '🔥', '🎉', '👀'],
   collapsed: {},
   theme: 'dark',
+  accent: null,
   chatFont: 16,
   reduceMotion: false,
   stream: MAX_STREAM,

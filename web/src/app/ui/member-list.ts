@@ -36,7 +36,9 @@ interface Section {
                   <app-icon class="owner-crown" name="crown" [size]="14" appTip="Dono do servidor" />
                 }
               </div>
-              @if (u.customStatus && !s.offline) {
+              @if (store.activityOf(u.id); as a) {
+                <div class="member-status activity-line">Jogando <strong>{{ a.name }}</strong></div>
+              } @else if (u.customStatus && !s.offline) {
                 <div class="member-status">{{ u.customStatus }}</div>
               }
             </div>

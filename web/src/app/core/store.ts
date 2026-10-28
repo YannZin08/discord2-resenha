@@ -3,6 +3,7 @@ import { Api } from './api';
 import type {
   Channel,
   Guild,
+  Activity,
   GuildPayload,
   Member,
   Message,
@@ -47,6 +48,8 @@ export class Store {
   readonly pinsVersion = signal<Record<number, number>>({});
   /** Music bot state per guild. */
   readonly music = signal<Record<number, MusicState>>({});
+  /** Ticks every 30 s, so game activity from the detector disappears once it expires. */
+  readonly now = signal(Date.now());
 
   private lists = new Map<number, WritableSignal<MessageList>>();
   private listeners = new Map<string, Set<Listener>>();
@@ -70,7 +73,9 @@ export class Store {
     return sid ? (this.voiceStates()[sid] ?? null) : null;
   });
 
-  constructor(private api: Api) {}
+  constructor(private api: Api) {
+    setInterval(() => this.now.set(Date.now()), 30_000);
+  }
 
   // ------------------------------------------------------------------ events
 
@@ -540,6 +545,15 @@ export class Store {
 
   statusOf(uid: number): Status {
     return this.presences()[uid] ?? 'offline';
+  }
+
+  /** The game someone is playing, if they're online and it hasn't expired. */
+  activityOf(uid: number): Activity | null {
+    const a = this.users()[uid]?.activity ?? (this.me()?.id === uid ? this.me()?.activity : null);
+    if (!a) return null;
+    const status = this.statusOf(uid);
+    if (status === 'offline' || (status === 'invisible' && this.me()?.id !== uid)) return null;
+    return !a.until || a.until > this.now() ? a : null;
   }
 
   voiceIn(channelId: number): VoiceState[] {

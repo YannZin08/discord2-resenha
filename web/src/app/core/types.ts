@@ -16,9 +16,17 @@ export interface User {
   themeColors?: [string, string] | null;
   about: string;
   customStatus: string;
+  /** What they're playing ("Jogando X"); `until` is set when the game detector reported it. */
+  activity?: Activity | null;
   createdAt: number;
   status?: StatusPref;
   bot?: boolean;
+}
+
+export interface Activity {
+  name: string;
+  since: number;
+  until: number | null;
 }
 
 export interface Track {

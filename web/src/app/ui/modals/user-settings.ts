@@ -6,7 +6,8 @@ import { Session } from '../../core/session';
 import { Store } from '../../core/store';
 import { Ui } from '../../core/ui';
 import { Voice } from '../../core/voice';
-import { avatarUrl, bannerImage, defaultAvatarColor } from '../../core/util';
+import { avatarUrl, bannerImage, defaultAvatarColor, elapsedLabel } from '../../core/util';
+import { detectorScript } from '../../core/game-detector';
 import { ProfileCard } from '../profile-card';
 import { Avatar, Icon } from '../shared';
 import { confirmDialog, promptDialog } from './dialogs';
@@ -14,9 +15,12 @@ import { StreamOptions } from './go-live';
 import { VoiceSettings } from './voice-settings';
 import { MAX_PROFILE_IMAGE, bannerImage as cropBanner, pickImage, squareImage } from './image';
 import { StreamSettings } from '../../core/prefs';
-import { THEMES } from '../../core/themes';
+import { ACCENTS, THEMES } from '../../core/themes';
 
-type Section = 'account' | 'profile' | 'appearance' | 'voice' | 'stream' | 'notifications';
+type Section = 'account' | 'profile' | 'activity' | 'appearance' | 'voice' | 'stream' | 'notifications';
+
+/** One-click custom statuses for when you aren't playing anything. */
+const QUICK_STATUSES = ['Só de boa', 'Estudando', 'Trabalhando', 'Ouvindo música', 'Assistindo um filme', 'Volto já'];
 
 const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c', '#9b59b6', '#34495e', '#e67e22', '#2c3e50'];
 
@@ -31,6 +35,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
             <h3>Configurações de usuário</h3>
             <button [class.active]="section() === 'account'" (click)="section.set('account')">Minha conta</button>
             <button [class.active]="section() === 'profile'" (click)="section.set('profile')">Perfis</button>
+            <button [class.active]="section() === 'activity'" (click)="section.set('activity')">Atividade</button>
             <h3>Configurações do app</h3>
             <button [class.active]="section() === 'appearance'" (click)="section.set('appearance')">Aparência</button>
             <button [class.active]="section() === 'voice'" (click)="openVoice()">Voz e vídeo</button>
@@ -204,6 +209,23 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                     </div>
                   }
                 </div>
+                <h3 class="settings-h3">Cor de destaque</h3>
+                <p class="hint">Pinta botões, menções e seleções por cima de qualquer tema.</p>
+                <div class="color-swatches accent-swatches">
+                  <button class="swatch big accent-default" [class.active]="!prefs.data().accent" title="Cor do tema" aria-label="Cor do tema" (click)="prefs.set('accent', null)">
+                    @if (!prefs.data().accent) {
+                      <app-icon name="check" [size]="16" />
+                    }
+                  </button>
+                  @for (c of accents; track c) {
+                    <button class="swatch big" [style.background]="c" [class.active]="prefs.data().accent === c" (click)="prefs.set('accent', c)">
+                      @if (prefs.data().accent === c) {
+                        <app-icon name="check" [size]="16" />
+                      }
+                    </button>
+                  }
+                  <input type="color" class="swatch big picker" [value]="prefs.data().accent || '#5865f2'" (input)="prefs.set('accent', $any($event.target).value)" />
+                </div>
                 <div class="settings-divider"></div>
                 <h3 class="settings-h3">Tamanho da fonte do chat</h3>
                 <div class="font-slider">
@@ -221,6 +243,59 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                   <input type="checkbox" class="switch" [ngModel]="prefs.data().reduceMotion" (ngModelChange)="prefs.set('reduceMotion', $event)" />
                 </label>
                 <p class="hint">O tema e essas opções ficam salvos neste dispositivo.</p>
+              }
+              @case ('activity') {
+                <h2>Atividade</h2>
+                <p class="hint">Mostra para os seus amigos e servidores o que você está jogando, como "Jogando Crimson Desert".</p>
+                @if (store.activityOf(me.id); as a) {
+                  <div class="activity-now">
+                    <span class="activity-icon"><app-icon name="game" [size]="28" /></span>
+                    <div class="activity-text">
+                      <div class="activity-head">Jogando agora</div>
+                      <div class="activity-name">{{ a.name }}</div>
+                      <div class="hint">{{ elapsed(a.since, store.now()) }}{{ a.until ? ' · detectado automaticamente' : '' }}</div>
+                    </div>
+                    <button class="btn btn-secondary" (click)="setActivity(null)">Parar</button>
+                  </div>
+                } @else {
+                  <div class="activity-now idle">
+                    <span class="activity-icon"><app-icon name="game" [size]="28" /></span>
+                    <div class="activity-text">
+                      <div class="activity-head">Nenhum jogo agora</div>
+                      <div class="hint">{{ me.customStatus || 'Defina um jogo abaixo ou ligue a detecção automática.' }}</div>
+                    </div>
+                  </div>
+                }
+                <div class="settings-divider"></div>
+                <label class="field-label">Definir jogo manualmente</label>
+                <div class="row-gap">
+                  <input class="input" maxlength="64" placeholder="Ex.: Crimson Desert" [(ngModel)]="gameDraft" (keydown.enter)="setActivity(gameDraft)" />
+                  <button class="btn btn-brand" [disabled]="!gameDraft.trim()" (click)="setActivity(gameDraft)">Definir</button>
+                </div>
+                <p class="hint">Fica até você parar ou a detecção automática achar outro jogo.</p>
+                <div class="settings-divider"></div>
+                <label class="field-label">Quando não estiver jogando</label>
+                <p class="hint">Vira o seu status personalizado, como "Matteo está só de boa".</p>
+                <div class="chip-row">
+                  @for (q of quickStatuses; track q) {
+                    <button class="chip" [class.active]="me.customStatus === q" (click)="setQuickStatus(me.customStatus === q ? '' : q)">{{ q }}</button>
+                  }
+                </div>
+                <div class="settings-divider"></div>
+                <h3 class="settings-h3">Detecção automática de jogos (Windows)</h3>
+                <p class="hint">
+                  Um navegador não consegue ver os programas abertos no PC, então o Resenha usa um detector pequeno. Baixe, dê dois cliques e deixe a
+                  janela aberta (pode minimizar). Ele reconhece qualquer jogo da Steam e vários outros (VALORANT, LoL, Fortnite, Minecraft, Roblox...).
+                </p>
+                <div class="row-gap">
+                  <button class="btn btn-brand" [disabled]="downloading()" (click)="downloadDetector()">
+                    {{ downloading() ? 'Gerando...' : 'Baixar detector de jogos' }}
+                  </button>
+                </div>
+                <p class="hint">
+                  O arquivo traz uma chave só sua, que só serve para avisar o jogo. Baixar de novo cria uma chave nova e a do arquivo antigo para de
+                  funcionar. Se o Windows avisar que o arquivo é desconhecido, clique em "Mais informações" e "Executar assim mesmo".
+                </p>
               }
               @case ('stream') {
                 <h2>Transmissão</h2>
@@ -274,6 +349,11 @@ export class UserSettings {
   readonly banners = BANNERS;
   readonly baseThemes = THEMES.filter((t) => t.group === 'base');
   readonly colorThemes = THEMES.filter((t) => t.group === 'color');
+  readonly accents = ACCENTS;
+  readonly quickStatuses = QUICK_STATUSES;
+  readonly elapsed = elapsedLabel;
+  gameDraft = '';
+  readonly downloading = signal(false);
   /** Section to open on, e.g. "profile" from the profile card's "Editar perfil". */
   readonly start = input<Section>('account');
   readonly section = linkedSignal(() => this.start());
@@ -386,6 +466,36 @@ export class UserSettings {
     this.patch({ about: this.about(), pronouns: this.pronouns().trim() })
       .then(() => this.ui.toast('Perfil salvo.', 'success'))
       .catch((e) => this.ui.error(e));
+  }
+
+  setActivity(name: string | null) {
+    const game = name?.trim() || null;
+    this.api.put('/users/@me/activity', { name: game }).then(
+      () => (this.gameDraft = ''),
+      (e) => this.ui.error(e),
+    );
+  }
+
+  setQuickStatus(customStatus: string) {
+    this.patch({ customStatus }).catch((e) => this.ui.error(e));
+  }
+
+  /** Makes a fresh detector key and saves the .cmd with it inside. */
+  async downloadDetector() {
+    this.downloading.set(true);
+    try {
+      const { token } = await this.api.post<{ token: string }>('/users/@me/activity-token', {});
+      const script = detectorScript(`${location.origin}/api/users/@me/activity`, token);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([script], { type: 'application/octet-stream' }));
+      a.download = 'resenha-detector-de-jogos.cmd';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    } catch (e) {
+      this.ui.error(e);
+    } finally {
+      this.downloading.set(false);
+    }
   }
 
   pickTheme(i: 0 | 1, e: Event) {
