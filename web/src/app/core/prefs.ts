@@ -46,6 +46,7 @@ interface PrefsData {
   mute: boolean;
   deaf: boolean;
   userVolumes: Record<number, number>;
+  streamVolumes: Record<number, number>;
   compact: boolean;
   recentEmojis: string[];
   collapsed: Record<number, boolean>;
@@ -68,6 +69,7 @@ const DEFAULTS: PrefsData = {
   mute: false,
   deaf: false,
   userVolumes: {},
+  streamVolumes: {},
   compact: false,
   recentEmojis: ['👍', '😂', '❤️', '😮', '😢', '🔥', '🎉', '👀'],
   collapsed: {},

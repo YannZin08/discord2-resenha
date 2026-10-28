@@ -3169,6 +3169,35 @@ app-voice-stage {
   font-size: 12px;
   flex-shrink: 0;
 }
+.tile-volume {
+  position: absolute;
+  top: 8px;
+  right: 48px;
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 12px;
+  cursor: default;
+}
+.tile:hover .tile-volume {
+  display: flex;
+}
+.tile-volume button {
+  display: flex;
+  color: #fff;
+}
+.tile-volume input {
+  width: 90px;
+  accent-color: var(--brand);
+}
+.tile-volume span {
+  width: 32px;
+  text-align: right;
+}
 .stage-controls {
   display: flex;
   justify-content: center;

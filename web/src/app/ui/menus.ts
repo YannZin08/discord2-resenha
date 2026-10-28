@@ -155,6 +155,13 @@ export function userMenuItems(
         label: 'Volume do usuário',
         slider: { value: voice.userVolume(userId), min: 0, max: 100, format: (v) => `${v}%`, onInput: (v) => voice.setUserVolume(userId, v) },
       });
+      const streaming = Object.values(store.voiceStates()).some((v) => v.userId === userId && v.stream && v.channelId === voice.channelId());
+      if (streaming) {
+        items.push({
+          label: 'Volume da transmissão',
+          slider: { value: voice.streamVolume(userId), min: 0, max: 100, format: (v) => `${v}%`, onInput: (v) => voice.setStreamVolume(userId, v) },
+        });
+      }
     }
     items.push({ separator: true });
     if (rel === 'friend') {

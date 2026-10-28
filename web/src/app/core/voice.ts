@@ -30,6 +30,8 @@ interface Peer {
   screenSenders: RTCRtpSender[];
   /** Signals are applied one at a time, in arrival order (a candidate must wait for its description). */
   queue: Promise<void>;
+  /** Our mic/camera/screen tracks are on this connection (the polite side waits for the first offer). */
+  localAttached: boolean;
 }
 
 export interface PeerInfo {
@@ -198,7 +200,7 @@ export class Voice {
         // Our stream only goes to the people watching it, so it costs no upload for the rest.
         for (const p of this.peers.values()) {
           const watches = states[p.sid]?.watching === mySid;
-          if (screen && watches && !p.screenSenders.length) this.addScreenTracks(p, screen);
+          if (screen && watches && p.localAttached && !p.screenSenders.length) this.addScreenTracks(p, screen);
           else if ((!screen || !watches) && p.screenSenders.length) this.removeScreenTracks(p);
         }
       });
@@ -359,6 +361,7 @@ export class Voice {
       });
       this.localCamera.set(stream);
       for (const p of this.peers.values()) {
+        if (!p.localAttached) continue;
         for (const t of stream.getVideoTracks()) p.cameraSenders.push(p.pc.addTrack(t, stream));
       }
       this.broadcastMedia();
@@ -500,6 +503,16 @@ export class Voice {
     return this.prefs.get('userVolumes')[userId] ?? 100;
   }
 
+  /** Volume of someone's screen share audio (0–100), kept apart from their voice. */
+  setStreamVolume(userId: number, volume: number) {
+    this.prefs.set('streamVolumes', { ...this.prefs.get('streamVolumes'), [userId]: volume });
+    this.applyOutput();
+  }
+
+  streamVolume(userId: number): number {
+    return this.prefs.get('streamVolumes')[userId] ?? 100;
+  }
+
   async changeInputDevice(deviceId: string) {
     this.prefs.set('inputDevice', deviceId);
     if (this.active()) await this.restartMic();
@@ -538,7 +551,7 @@ export class Voice {
     for (const p of this.peers.values()) {
       const sender = p.senders.find((s) => s.track?.kind === 'audio');
       if (sender) await sender.replaceTrack(track);
-      else if (track && this.mic) p.senders.push(p.pc.addTrack(track, this.mic));
+      else if (track && this.mic && p.localAttached) p.senders.push(p.pc.addTrack(track, this.mic));
     }
     if (this.active()) this.sendState();
   }
@@ -592,11 +605,16 @@ export class Voice {
 
   private applyOutput() {
     const sink = this.prefs.get('outputDevice');
+    const out = this.prefs.get('outputVolume') / 100;
     for (const p of this.peers.values()) {
-      const vol = Math.min(1, (this.userVolume(p.userId) / 100) * (this.prefs.get('outputVolume') / 100));
-      for (const el of [p.micAudio, p.screenAudio]) {
-        el.muted = this.deaf();
-        el.volume = vol;
+      // Voice and screen-share audio have separate volumes, like Discord.
+      const levels: [HTMLAudioElement, number][] = [
+        [p.micAudio, this.userVolume(p.userId)],
+        [p.screenAudio, this.streamVolume(p.userId)],
+      ];
+      for (const [el, level] of levels) {
+        el.muted = this.deaf() || level === 0;
+        el.volume = Math.min(1, (level / 100) * out);
         const withSink = el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
         if (withSink.setSinkId && sink) withSink.setSinkId(sink === 'default' ? '' : sink).catch(() => undefined);
       }
@@ -661,6 +679,18 @@ export class Voice {
     for (const p of this.peers.values()) this.signal(p.sid, { media: info });
   }
 
+  private attachLocalMedia(peer: Peer) {
+    if (peer.localAttached) return;
+    peer.localAttached = true;
+    const pc = peer.pc;
+    if (this.mic) for (const t of this.mic.getAudioTracks()) peer.senders.push(pc.addTrack(t, this.mic));
+    else if (!peer.polite) pc.addTransceiver('audio', { direction: 'recvonly' });
+    const cam = this.localCamera();
+    if (cam) for (const t of cam.getVideoTracks()) peer.cameraSenders.push(pc.addTrack(t, cam));
+    const screen = this.localScreen();
+    if (screen && this.store.voiceStates()[peer.sid]?.watching === this.store.sessionId()) this.addScreenTracks(peer, screen);
+  }
+
   private createPeer(sid: string, userId: number): Peer {
     const pc = new RTCPeerConnection({ iceServers: this.iceServers });
     const micAudio = new Audio();
@@ -683,13 +713,13 @@ export class Voice {
       cameraSenders: [],
       screenSenders: [],
       queue: Promise.resolve(),
+      localAttached: false,
     };
     this.peers.set(sid, peer);
 
-    if (this.mic) for (const t of this.mic.getAudioTracks()) peer.senders.push(pc.addTrack(t, this.mic));
-    else pc.addTransceiver('audio', { direction: 'recvonly' });
-    const cam = this.localCamera();
-    if (cam) for (const t of cam.getVideoTracks()) peer.cameraSenders.push(pc.addTrack(t, cam));
+    // Only the impolite side starts the connection. If both offered at once, the polite
+    // side's ICE candidates could be dropped by the other and the call stayed stuck.
+    if (!peer.polite) this.attachLocalMedia(peer);
 
     pc.onnegotiationneeded = async () => {
       try {
@@ -715,18 +745,25 @@ export class Voice {
     };
     pc.onconnectionstatechange = () => {
       this.peerStates.update((s) => ({ ...s, [sid]: pc.connectionState }));
-      if (pc.connectionState === 'failed') pc.restartIce();
+      if (pc.connectionState === 'failed' && !peer.polite) pc.restartIce();
     };
-    // If a connection never comes up (lost candidate, network change), retry ICE.
+    // If a connection never comes up (lost candidate, network change), the impolite side
+    // restarts ICE after a few seconds; restarting on both sides would collide again.
     let since = Date.now();
+    let lastRestart = Date.now();
     let warned = false;
     const watchdog = setInterval(() => {
       if (pc.connectionState === 'closed') return clearInterval(watchdog);
       if (pc.connectionState === 'connected') {
         since = Date.now();
+        lastRestart = Date.now();
         return;
       }
-      if (Date.now() - since > 12_000) {
+      if (!peer.polite && pc.signalingState === 'stable' && Date.now() - lastRestart > 6000) {
+        lastRestart = Date.now();
+        pc.restartIce();
+      }
+      if (Date.now() - since > 15_000) {
         since = Date.now();
         if (!warned) {
           warned = true;
@@ -738,9 +775,8 @@ export class Voice {
             'error',
           );
         }
-        pc.restartIce();
       }
-    }, 4000);
+    }, 2000);
     this.peerStates.update((s) => ({ ...s, [sid]: pc.connectionState }));
     this.signal(sid, { media: this.mediaInfo() });
     this.applyOutput();
@@ -799,6 +835,7 @@ export class Voice {
         if (peer.ignoreOffer) return;
         await pc.setRemoteDescription(desc);
         if (desc.type === 'offer') {
+          this.attachLocalMedia(peer);
           await pc.setLocalDescription();
           this.signal(from, { description: pc.localDescription });
         }

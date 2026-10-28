@@ -55,6 +55,22 @@ interface Tile {
                 (loadedmetadata)="onResize(t.key, $event)"
               ></video>
               <button class="tile-fs" appTip="Tela cheia" (click)="fullscreen($event)"><app-icon name="fullscreen" [size]="18" /></button>
+              @if (t.kind === 'screen' && !t.self) {
+                <div class="tile-volume" (click)="$event.stopPropagation()">
+                  <button [appTip]="voice.streamVolume(t.userId) ? 'Silenciar transmissão' : 'Ativar som da transmissão'" (click)="toggleStreamMute(t.userId)">
+                    <app-icon [name]="voice.streamVolume(t.userId) ? 'speaker' : 'speakerOff'" [size]="18" />
+                  </button>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    [value]="voice.streamVolume(t.userId)"
+                    (input)="voice.setStreamVolume(t.userId, +$any($event.target).value)"
+                    aria-label="Volume da transmissão"
+                  />
+                  <span>{{ voice.streamVolume(t.userId) }}%</span>
+                </div>
+              }
             } @else if (t.kind === 'screen') {
               <div class="stream-invite">
                 <app-avatar [user]="store.users()[t.userId]" [size]="compact() ? 48 : 64" />
@@ -156,6 +172,19 @@ export class VoiceStage {
     if (!w) return;
     const label = w >= 3800 ? '4K' : w >= 2500 ? '1440p' : w >= 1900 ? '1080p' : w >= 1260 ? '720p' : `${Math.min(v.videoWidth, v.videoHeight)}p`;
     if (this.quality()[key] !== label) this.quality.update((q) => ({ ...q, [key]: label }));
+  }
+
+  /** Volume before muting a stream, to restore it when unmuting. */
+  private lastStreamVolume = new Map<number, number>();
+
+  toggleStreamMute(userId: number) {
+    const cur = this.voice.streamVolume(userId);
+    if (cur > 0) {
+      this.lastStreamVolume.set(userId, cur);
+      this.voice.setStreamVolume(userId, 0);
+    } else {
+      this.voice.setStreamVolume(userId, this.lastStreamVolume.get(userId) || 100);
+    }
   }
 
   tileClick(t: Tile) {
