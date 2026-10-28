@@ -49,6 +49,7 @@
   --ring-hover: #35373c;
   --ring-selected: #404249;
   --scroll-thumb: var(--bg-tertiary);
+  --scroll-track: var(--bg-secondary);
   --spoiler: #1e1f22;
   --btn-secondary: #4e5058;
   --bg-modal: var(--bg-primary);
@@ -131,30 +132,51 @@
 /* Colored themes: a gradient behind see-through surfaces, like Discord's color themes.
    The gradient and the solid window colors come from core/themes.ts. */
 :root[data-tone='color'] {
-  --bg-tertiary: rgba(0, 0, 0, 0.45);
-  --bg-secondary: rgba(0, 0, 0, 0.32);
-  --bg-secondary-alt: rgba(0, 0, 0, 0.42);
-  --bg-primary: rgba(0, 0, 0, 0.2);
-  --bg-input: rgba(0, 0, 0, 0.35);
+  --bg-tertiary: rgba(0, 0, 0, 0.42);
+  --bg-secondary: rgba(0, 0, 0, 0.28);
+  --bg-secondary-alt: rgba(0, 0, 0, 0.38);
+  --bg-primary: rgba(0, 0, 0, 0.16);
+  --bg-input: rgba(0, 0, 0, 0.3);
   --bg-textarea: rgba(255, 255, 255, 0.08);
-  --bg-message-hover: rgba(0, 0, 0, 0.12);
+  --bg-message-hover: rgba(0, 0, 0, 0.1);
   --bg-accent: rgba(255, 255, 255, 0.14);
-  --border-subtle: rgba(255, 255, 255, 0.12);
-  --ring-hover: rgba(0, 0, 0, 0.3);
-  --ring-selected: rgba(0, 0, 0, 0.3);
-  --scroll-thumb: rgba(0, 0, 0, 0.45);
+  --bg-mod-hover: rgba(255, 255, 255, 0.07);
+  --bg-mod-active: rgba(255, 255, 255, 0.11);
+  --bg-mod-selected: rgba(255, 255, 255, 0.15);
+  --text-normal: rgba(255, 255, 255, 0.9);
+  --text-muted: rgba(255, 255, 255, 0.6);
+  --header-primary: #ffffff;
+  --header-secondary: rgba(255, 255, 255, 0.75);
+  --interactive-normal: rgba(255, 255, 255, 0.7);
+  --interactive-hover: rgba(255, 255, 255, 0.9);
+  --interactive-muted: rgba(255, 255, 255, 0.32);
+  --channel-icon: rgba(255, 255, 255, 0.5);
+  --gray-status: rgba(255, 255, 255, 0.45);
+  --btn-secondary: rgba(255, 255, 255, 0.16);
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --ring-hover: rgba(255, 255, 255, 0.1);
+  --ring-selected: rgba(255, 255, 255, 0.16);
+  --scroll-thumb: rgba(0, 0, 0, 0.35);
+  --scroll-track: transparent;
   --spoiler: rgba(0, 0, 0, 0.6);
 }
 :root[data-tone='color-light'] {
-  --bg-tertiary: rgba(255, 255, 255, 0.3);
-  --bg-secondary: rgba(255, 255, 255, 0.45);
-  --bg-secondary-alt: rgba(255, 255, 255, 0.55);
-  --bg-primary: rgba(255, 255, 255, 0.6);
-  --bg-input: rgba(255, 255, 255, 0.7);
-  --bg-textarea: rgba(255, 255, 255, 0.75);
+  --bg-tertiary: rgba(255, 255, 255, 0.12);
+  --bg-secondary: rgba(255, 255, 255, 0.22);
+  --bg-secondary-alt: rgba(255, 255, 255, 0.34);
+  --bg-primary: rgba(255, 255, 255, 0.26);
+  --bg-input: rgba(255, 255, 255, 0.45);
+  --bg-textarea: rgba(255, 255, 255, 0.5);
+  --bg-message-hover: rgba(255, 255, 255, 0.3);
   --bg-accent: rgba(0, 0, 0, 0.1);
+  --bg-mod-hover: rgba(0, 0, 0, 0.05);
+  --bg-mod-active: rgba(0, 0, 0, 0.08);
+  --bg-mod-selected: rgba(0, 0, 0, 0.1);
+  --border-subtle: rgba(0, 0, 0, 0.08);
   --ring-hover: rgba(255, 255, 255, 0.6);
   --ring-selected: rgba(255, 255, 255, 0.6);
+  --scroll-thumb: rgba(0, 0, 0, 0.2);
+  --scroll-track: transparent;
 }
 
 * {
@@ -249,7 +271,7 @@ img.emoji {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: auto;
-  scrollbar-color: var(--scroll-thumb) var(--bg-secondary);
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
 }
 .scroller::-webkit-scrollbar {
   width: 16px;
@@ -261,7 +283,7 @@ img.emoji {
   border-radius: 8px;
 }
 .scroller::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--scroll-track);
   border: 4px solid transparent;
   background-clip: padding-box;
   border-radius: 8px;
@@ -909,6 +931,12 @@ select.input {
 
 /* ------------------------------------------------------------- server rail */
 
+/* The host stretches to the full height, so the rail's background reaches the bottom
+   (it only shows on the see-through color themes). */
+app-server-rail {
+  display: flex;
+  flex-shrink: 0;
+}
 .rail {
   width: 72px;
   flex-shrink: 0;
@@ -1596,7 +1624,7 @@ app-dm-sidebar {
   overflow-anchor: auto;
 }
 .messages::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--scroll-track);
 }
 .messages-inner {
   display: flex;
