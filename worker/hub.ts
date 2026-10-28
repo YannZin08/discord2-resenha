@@ -1070,7 +1070,13 @@ export class Hub extends DurableObject<Env> {
     if (b.avatar !== undefined) next.avatar = b.avatar === null ? null : this.profileImage(b.avatar, c.uid, 'O avatar');
     if (b.banner !== undefined) next.banner = b.banner === null ? null : this.profileImage(b.banner, c.uid, 'O banner');
     if (b.bannerColor !== undefined) next.banner_color = color(b.bannerColor);
-    if (b.about !== undefined) next.about = str(b.about, 'Sobre mim', 0, 190);
+    if (b.about !== undefined) {
+      // Custom emojis count as their :nome:, so the hidden id doesn't eat the 190 characters.
+      next.about = str(b.about, 'Sobre mim', 0, 2000);
+      if (next.about.replace(/<a?:([A-Za-z0-9_]{2,32}):\d{1,20}>/g, ':$1:').length > 190) {
+        throw new HttpError(400, 'Sobre mim pode ter no máximo 190 caracteres.');
+      }
+    }
     if (b.pronouns !== undefined) next.pronouns = str(b.pronouns, 'Pronomes', 0, 40);
     if (b.themeColors !== undefined) {
       if (b.themeColors === null) next.theme_colors = null;

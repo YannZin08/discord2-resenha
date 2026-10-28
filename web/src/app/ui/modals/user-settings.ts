@@ -8,7 +8,9 @@ import { Ui } from '../../core/ui';
 import { Voice } from '../../core/voice';
 import { avatarUrl, bannerImage, defaultAvatarColor, elapsedLabel } from '../../core/util';
 import { detectorScript } from '../../core/game-detector';
+import { parseCustom } from '../../core/custom-emoji';
 import { EmojiManager } from '../emoji-manager';
+import { customByName, toEditable, toWire } from '../message';
 import { ProfileCard } from '../profile-card';
 import { Avatar, Icon } from '../shared';
 import { confirmDialog, promptDialog } from './dialogs';
@@ -148,14 +150,21 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                     <input class="input" maxlength="40" [ngModel]="pronouns()" (ngModelChange)="pronouns.set($event)" placeholder="Ex.: ele/dele, ela/dela" />
                     <div class="settings-divider"></div>
                     <label class="field-label">Sobre mim</label>
-                    <textarea
-                      class="input textarea"
-                      rows="4"
-                      maxlength="190"
-                      [ngModel]="about()"
-                      (ngModelChange)="about.set($event)"
-                      placeholder="Conte um pouco sobre você"
-                    ></textarea>
+                    <div class="about-field">
+                      <textarea
+                        #aboutBox
+                        class="input textarea"
+                        rows="4"
+                        maxlength="190"
+                        [ngModel]="about()"
+                        (ngModelChange)="about.set($event)"
+                        placeholder="Conte um pouco sobre você"
+                      ></textarea>
+                      <button type="button" class="about-emoji" title="Adicionar emoji" aria-label="Adicionar emoji" (click)="aboutEmoji($event, aboutBox)">
+                        <app-icon name="smile" [size]="20" />
+                      </button>
+                    </div>
+                    <p class="hint">Dá para usar emojis: os normais, os seus e os dos seus servidores. Digite <code>:nome:</code> ou use o botão.</p>
                     <div class="hint right">{{ 190 - about().length }}</div>
                     <div class="settings-actions">
                       <button class="btn btn-success" (click)="saveAbout()">Salvar alterações</button>
@@ -372,14 +381,15 @@ export class UserSettings {
   readonly uploading = signal<'avatar' | 'banner' | null>(null);
   readonly permission = signal('Notification' in window ? Notification.permission : 'denied');
   readonly fallbackBanner = computed(() => defaultAvatarColor(this.store.me()?.id ?? 0));
-  readonly about = signal(this.store.me()?.about ?? '');
+  /** "Sobre mim" as typed: custom emojis read as :nome: until saved. */
+  readonly about = signal(toEditable(this.store.me()?.about ?? '', this.store));
   readonly pronouns = signal(this.store.me()?.pronouns ?? '');
   /** Profile theme being picked: shown live in the preview, saved when the picker closes. */
   readonly themeDraft = linkedSignal(() => this.store.me()?.themeColors ?? null);
   /** The preview shows what's typed before it's saved. */
   readonly previewUser = computed(() => {
     const me = this.store.me();
-    return me ? { ...me, about: this.about(), pronouns: this.pronouns(), themeColors: this.themeDraft() } : null;
+    return me ? { ...me, about: toWire(this.about(), this.store, null), pronouns: this.pronouns(), themeColors: this.themeDraft() } : null;
   });
   pwCurrent = '';
   pwNext = '';
@@ -473,8 +483,28 @@ export class UserSettings {
     this.patch({ bannerColor: c }).catch((e) => this.ui.error(e));
   }
 
+  /** Puts the picked emoji where the cursor is, as :nome: for custom ones (like the chat box). */
+  aboutEmoji(e: MouseEvent, box: HTMLTextAreaElement) {
+    this.ui.openPicker(
+      e.currentTarget as Element,
+      (picked) => {
+        const c = parseCustom(picked);
+        const text = c && customByName(this.store, null, c.name)?.id === +c.id ? `:${c.name}:` : picked;
+        const cur = this.about();
+        const pos = box.selectionStart ?? cur.length;
+        const next = (cur.slice(0, pos) + text + cur.slice(box.selectionEnd ?? pos)).slice(0, 190);
+        this.about.set(next);
+        setTimeout(() => {
+          box.focus();
+          box.setSelectionRange(pos + text.length, pos + text.length);
+        });
+      },
+      true,
+    );
+  }
+
   saveAbout() {
-    this.patch({ about: this.about(), pronouns: this.pronouns().trim() })
+    this.patch({ about: toWire(this.about(), this.store, null), pronouns: this.pronouns().trim() })
       .then(() => this.ui.toast('Perfil salvo.', 'success'))
       .catch((e) => this.ui.error(e));
   }

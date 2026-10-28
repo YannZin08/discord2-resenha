@@ -4544,6 +4544,26 @@ app-profile-card {
   overflow: hidden;
   animation: fade-in 0.1s ease;
 }
+/* "Sobre mim" with an emoji button in the corner, like the chat box. */
+.about-field {
+  position: relative;
+}
+.about-field .textarea {
+  padding-right: 44px;
+}
+.about-emoji {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--interactive-normal);
+}
+.about-emoji:hover {
+  color: var(--interactive-hover);
+  background: var(--bg-mod-hover);
+}
 /* Server settings → Emojis: one row per emoji, the name editable in place. */
 .emoji-table {
   display: flex;
