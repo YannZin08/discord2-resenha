@@ -1,88 +1,73 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Api } from '../../core/api';
 import { Nav } from '../../core/nav';
 import { Store } from '../../core/store';
 import { Ui } from '../../core/ui';
+import { initials } from '../../core/util';
 import { Autofocus, Icon } from '../shared';
+import { Tip } from '../tooltip';
 import { pickImage, squareImage } from './image';
 
+/** Create a server or join one with an invite: one small window, two tabs. */
 @Component({
   selector: 'app-create-guild',
-  imports: [FormsModule, Icon, Autofocus],
+  imports: [FormsModule, Icon, Autofocus, Tip],
   template: `
     <div class="modal-backdrop" (click)="ui.close()"></div>
-    <div class="modal" role="dialog">
-      <button class="modal-x" (click)="ui.close()"><app-icon name="close" /></button>
-      @switch (step()) {
-        @case ('start') {
-          <div class="modal-body center">
-            <h2>Crie seu servidor</h2>
-            <p class="modal-text">Seu servidor é onde você e seus amigos se encontram. Crie o seu e comece a conversar.</p>
-            <button class="choice" (click)="step.set('create')">
-              <span class="choice-icon">🏠</span>
-              <span>Criar o meu</span>
-              <app-icon name="chevronRight" />
+    <div class="modal cg" role="dialog" aria-labelledby="cg-title">
+      <button class="modal-x" aria-label="Fechar" (click)="ui.close()"><app-icon name="close" /></button>
+      <h2 id="cg-title" class="cg-title">Novo servidor</h2>
+      <div class="cg-tabs" role="tablist">
+        <button type="button" role="tab" [class.active]="step() === 'create'" [attr.aria-selected]="step() === 'create'" (click)="switchTo('create')">
+          Criar
+        </button>
+        <button type="button" role="tab" [class.active]="step() === 'join'" [attr.aria-selected]="step() === 'join'" (click)="switchTo('join')">
+          Entrar com convite
+        </button>
+      </div>
+      @if (step() === 'create') {
+        <form class="cg-body" (ngSubmit)="create()">
+          <div class="cg-row">
+            <button type="button" class="cg-icon" [appTip]="preview() ? 'Trocar ícone' : 'Escolher ícone'" (click)="chooseIcon()">
+              @if (preview()) {
+                <img [src]="preview()" alt="" />
+              } @else {
+                <span>{{ acronym() }}</span>
+              }
+              <span class="cg-icon-badge"><app-icon name="image" [size]="14" /></span>
             </button>
-            <div class="choice-sep">Para mim e meus amigos · Para um clube ou comunidade · Para o trabalho</div>
+            <label class="cg-field">
+              <span class="cg-label">Nome</span>
+              <input class="input" name="name" [(ngModel)]="name" appAutofocus maxlength="100" placeholder="Nome do servidor" />
+            </label>
           </div>
-          <div class="modal-footer column">
-            <h3>Já tem um convite?</h3>
-            <button class="btn btn-secondary btn-block" (click)="step.set('join')">Entrar em um servidor</button>
+          <div class="cg-channels">
+            <span>Já vem com</span>
+            <span class="cg-chip"># geral</span>
+            <span class="cg-chip"># entradas-e-saídas</span>
+            <span class="cg-chip"># música</span>
           </div>
-        }
-        @case ('create') {
-          <form (ngSubmit)="create()">
-            <div class="modal-body center">
-              <h2>Personalize seu servidor</h2>
-              <p class="modal-text">Deixe seu novo servidor com a sua cara dando a ele um nome e um ícone. Você pode mudar depois.</p>
-              <button type="button" class="icon-upload" (click)="chooseIcon()">
-                @if (preview()) {
-                  <img [src]="preview()" alt="" />
-                } @else {
-                  <app-icon name="image" [size]="28" />
-                  <span>ENVIAR</span>
-                }
-                <span class="icon-upload-plus"><app-icon name="plus" [size]="16" /></span>
-              </button>
-              <label class="field-label left" [class.error]="error()">
-                Nome do servidor
-                @if (error()) {
-                  <span class="field-error"> - {{ error() }}</span>
-                }
-              </label>
-              <input class="input" name="name" [(ngModel)]="name" appAutofocus maxlength="100" />
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-link" (click)="step.set('start')">Voltar</button>
-              <button type="submit" class="btn btn-brand" [disabled]="busy() || !name.trim()">Criar</button>
-            </div>
-          </form>
-        }
-        @case ('join') {
-          <form (ngSubmit)="join()">
-            <div class="modal-body center">
-              <h2>Entrar em um servidor</h2>
-              <p class="modal-text">Digite um convite abaixo para entrar em um servidor existente.</p>
-              <label class="field-label left" [class.error]="error()">
-                Link do convite <span class="req">*</span>
-                @if (error()) {
-                  <span class="field-error"> - {{ error() }}</span>
-                }
-              </label>
-              <input class="input" name="code" [(ngModel)]="code" [placeholder]="origin + '/invite/aBcDeFgH'" appAutofocus />
-              <div class="hint-block">
-                <h3>Os convites são assim</h3>
-                <p>aBcDeFgH</p>
-                <p>{{ origin }}/invite/aBcDeFgH</p>
-              </div>
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-link" (click)="step.set('start')">Voltar</button>
-              <button type="submit" class="btn btn-brand" [disabled]="busy() || !code.trim()">Entrar no servidor</button>
-            </div>
-          </form>
-        }
+          @if (error()) {
+            <p class="cg-error">{{ error() }}</p>
+          }
+          <button type="submit" class="btn btn-brand btn-block cg-submit" [disabled]="busy() || !name.trim()">
+            {{ busy() ? 'Criando...' : 'Criar servidor' }}
+          </button>
+        </form>
+      } @else {
+        <form class="cg-body" (ngSubmit)="join()">
+          <label class="cg-field">
+            <span class="cg-label">Link ou código do convite</span>
+            <input class="input" name="code" [(ngModel)]="code" [placeholder]="origin + '/invite/aBcDeFgH'" appAutofocus />
+          </label>
+          @if (error()) {
+            <p class="cg-error">{{ error() }}</p>
+          }
+          <button type="submit" class="btn btn-brand btn-block cg-submit" [disabled]="busy() || !code.trim()">
+            {{ busy() ? 'Entrando...' : 'Entrar no servidor' }}
+          </button>
+        </form>
       }
     </div>
   `,
@@ -92,14 +77,28 @@ export class CreateGuild {
   private api = inject(Api);
   private nav = inject(Nav);
   private store = inject(Store);
-  readonly step = signal<'start' | 'create' | 'join'>('start');
+  readonly step = signal<'create' | 'join'>('create');
   readonly preview = signal<string | null>(null);
   readonly busy = signal(false);
   readonly error = signal('');
   readonly origin = location.origin;
   private icon: Blob | null = null;
-  name = `Servidor de ${this.store.me()?.displayName ?? ''}`;
+  readonly nameText = signal(`Servidor de ${this.store.me()?.displayName ?? ''}`);
+  /** Without an image the icon shows the name's initials, like it will in the server list. */
+  readonly acronym = computed(() => initials(this.nameText()) || '?');
   code = '';
+
+  get name() {
+    return this.nameText();
+  }
+  set name(v: string) {
+    this.nameText.set(v);
+  }
+
+  switchTo(step: 'create' | 'join') {
+    this.step.set(step);
+    this.error.set('');
+  }
 
   async chooseIcon() {
     const f = await pickImage();
