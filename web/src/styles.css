@@ -2236,10 +2236,6 @@ app-dm-sidebar {
   flex-direction: column;
   gap: 8px;
 }
-/* Nox's notes ("Fulano pausou.", "Fila encerrada.") are short and a size smaller than people's messages. */
-.message.nox .msg-content {
-  font-size: 14px;
-}
 /* Nox's song card: small cover, a label, the title and "artist · who asked". */
 .track-card {
   display: flex;
@@ -6264,6 +6260,26 @@ img.emoji.custom {
 }
 :where(:root[data-msg='bubbles']) .message .msg-edit {
   align-self: stretch;
+}
+/* The time goes under each message, small, like WhatsApp; the header keeps only the name. */
+.msg-stamp {
+  display: none;
+}
+:where(:root[data-msg='bubbles']) .message:not(.system) .msg-stamp {
+  display: block;
+  margin-top: 3px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-muted);
+  cursor: default;
+}
+:where(:root[data-msg='bubbles']) .message .msg-header .msg-time,
+:where(:root[data-msg='bubbles']) .message .msg-hover-time {
+  display: none;
+}
+:where(:root[data-msg='bubbles']) .message.mine .msg-header {
+  display: none;
 }
 /* Fewer frames: a soft wash (no side bar) when you're mentioned, quieter @mentions and dates. */
 :where(:root[data-msg='bubbles']) .message.mentioned {

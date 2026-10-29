@@ -298,6 +298,9 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
           }
         }
 
+        <!-- Balões: the time sits under each message, like WhatsApp (the classic list keeps it in the header). -->
+        <span class="msg-stamp" [appTip]="fullTime()">{{ timestamp() }}</span>
+
         @if (m.reactions.length) {
           <div class="reactions">
             @for (r of m.reactions; track r.emoji) {
