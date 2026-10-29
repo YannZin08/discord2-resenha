@@ -107,6 +107,12 @@ interface Suggestion {
             <span class="char-count" [class.over]="text().length > MAX">{{ MAX - text().length }}</span>
           }
           <button type="button" class="composer-btn emoji-btn" appTip="Escolher um emoji" (click)="openPicker($event)"><app-icon name="smile" /></button>
+          @if (canSend()) {
+            <!-- mousedown keeps the focus (and the phone keyboard) in the box. -->
+            <button type="button" class="composer-send" aria-label="Enviar" appTip="Enviar" (mousedown)="$event.preventDefault()" (click)="send()">
+              <app-icon name="send" [size]="20" />
+            </button>
+          }
         </div>
       </form>
     }
@@ -157,8 +163,10 @@ export class Composer {
     const c = this.channel();
     if (c.type === 'dm') return `Conversar com @${channelLabel(c, this.store.users(), this.store.me()?.id)}`;
     if (c.type === 'group_dm') return `Conversar em ${channelLabel(c, this.store.users(), this.store.me()?.id)}`;
-    return `Conversar em #${c.name}`;
+    return `Manda a resenha em #${c.name}`;
   });
+
+  readonly canSend = computed(() => !!this.text().trim() || this.files().length > 0);
 
   readonly typingText = computed(() => {
     const c = this.channel();

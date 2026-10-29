@@ -2397,6 +2397,86 @@ app-dm-sidebar {
 .composer-btn.attach {
   width: 56px;
 }
+/* "Na call agora": the server's busiest call at the top of the channel list. */
+.live-call {
+  margin: 12px 10px 4px 2px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--bg-secondary-alt);
+  --status-ring: var(--bg-secondary-alt);
+}
+.live-call-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.live-call-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--green);
+}
+.live-call-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.live-call-row {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.live-call-faces {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 4px;
+}
+.live-call-faces app-avatar {
+  margin-left: -6px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--bg-secondary-alt);
+}
+.live-call-more {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.live-call-join {
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 17px;
+  background: var(--green);
+  color: #10261a;
+  font-size: 14px;
+  font-weight: 700;
+}
+.live-call-join:hover {
+  filter: brightness(1.08);
+}
+.composer-send {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  margin: 4px 0 4px 6px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand);
+  color: var(--on-brand);
+  animation: pop 0.2s var(--spring, ease);
+}
+.composer-send:hover {
+  background: var(--brand-hover);
+}
 .composer-btn.emoji-btn:hover {
   transform: scale(1.14);
 }

@@ -27,6 +27,25 @@ interface Group {
         <app-icon name="chevronDown" [size]="18" />
       </header>
       <div class="channel-list scroller thin" (contextmenu)="listMenu($event)">
+        @if (liveCall(); as call) {
+          <div class="live-call">
+            <div class="live-call-head">
+              <span class="live-call-title">Na call agora</span>
+              <span class="live-call-name">{{ call.channel.name }}</span>
+            </div>
+            <div class="live-call-row">
+              <button class="live-call-faces" [attr.aria-label]="'Ver a call ' + call.channel.name" (click)="nav.openChannel(call.channel.guildId, call.channel.id)">
+                @for (v of call.faces; track v.sessionId) {
+                  <app-avatar [user]="store.users()[v.userId]" [size]="32" [speaking]="voice.speaking().has(v.userId)" />
+                }
+                @if (call.more) {
+                  <span class="live-call-more">+{{ call.more }}</span>
+                }
+              </button>
+              <button class="live-call-join" (click)="voice.join(call.channel.id, call.channel.guildId)">Entrar</button>
+            </div>
+          </div>
+        }
         @for (group of groups(); track group.category?.id ?? 0) {
           @if (group.category; as cat) {
             <div class="category" [class.collapsed]="isCollapsed(cat.id)" (click)="toggle(cat.id)" (contextmenu)="channelMenu($event, cat)">
@@ -113,6 +132,18 @@ export class GuildSidebar {
       groups.push({ category: cat, channels: all.filter((c) => c.parentId === cat.id).sort(byType) });
     }
     return groups;
+  });
+
+  /** The busiest call of the server you're not in, with a shortcut to join it. */
+  readonly liveCall = computed(() => {
+    let best: { channel: Channel; users: VoiceState[] } | null = null;
+    for (const c of this.store.guildChannels(this.guildId())) {
+      if (c.type !== 'voice' || c.id === this.voice.channelId()) continue;
+      const users = this.store.voiceIn(c.id);
+      if (users.length && (!best || users.length > best.users.length)) best = { channel: c, users };
+    }
+    if (!best) return null;
+    return { channel: best.channel, faces: best.users.slice(0, 4), more: Math.max(0, best.users.length - 4) };
   });
 
   voiceUsers(channelId: number): VoiceState[] {
