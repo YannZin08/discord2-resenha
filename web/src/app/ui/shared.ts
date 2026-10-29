@@ -94,13 +94,24 @@ export class Icon {
   readonly d = computed(() => ICONS[this.name()] ?? '');
 }
 
-/** The app mark: a speech bubble with two eyes. Used for the home button and default avatars. */
+/** The Resenha symbol: the red speech bubble (same drawing as web/public/icon.svg, the favicon). */
 @Component({
   selector: 'app-logo',
   template: `<svg [attr.width]="size()" [attr.height]="size()" viewBox="0 0 48 48" aria-hidden="true">
+    <defs>
+      <linearGradient id="resenha-logo" x1="0" y1="0" x2="1" y2="0.6">
+        <stop offset="0" stop-color="#ff2d78" />
+        <stop offset="0.55" stop-color="#ff1f3d" />
+        <stop offset="1" stop-color="#ff1a2e" />
+      </linearGradient>
+    </defs>
     <path
-      fill="currentColor"
-      d="M24 6C13.5 6 5 13.1 5 22c0 4.6 2.3 8.8 6 11.7V42l7.8-4.6c1.7.4 3.4.6 5.2.6 10.5 0 19-7.1 19-16S34.5 6 24 6zm-7.5 19.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7zm15 0a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"
+      fill="none"
+      stroke="url(#resenha-logo)"
+      stroke-width="7.4"
+      stroke-linejoin="round"
+      stroke-linecap="round"
+      d="M3.8 32V14.6Q3.8 6 12.8 5.4L36.5 3.9Q44.2 3.5 44.2 11V27Q44.2 36.1 35.2 36.1H19.8L13.8 43.4L5.9 36.3Q3.8 34.4 3.8 32Z"
     />
   </svg>`,
   host: { class: 'logo' },
@@ -109,15 +120,30 @@ export class Logo {
   readonly size = input(28);
 }
 
+/** The face on avatars of people without a picture (the old app mark: a bubble with two eyes). */
+@Component({
+  selector: 'app-avatar-mark',
+  template: `<svg [attr.width]="size()" [attr.height]="size()" viewBox="0 0 48 48" aria-hidden="true">
+    <path
+      fill="currentColor"
+      d="M24 6C13.5 6 5 13.1 5 22c0 4.6 2.3 8.8 6 11.7V42l7.8-4.6c1.7.4 3.4.6 5.2.6 10.5 0 19-7.1 19-16S34.5 6 24 6zm-7.5 19.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7zm15 0a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"
+    />
+  </svg>`,
+  host: { class: 'logo' },
+})
+export class AvatarMark {
+  readonly size = input(28);
+}
+
 @Component({
   selector: 'app-avatar',
-  imports: [Logo],
+  imports: [AvatarMark],
   template: `
     <div class="avatar" [class.speaking]="speaking()" [style.width.px]="size()" [style.height.px]="size()">
       @if (url(); as src) {
         <img [src]="src" alt="" draggable="false" loading="lazy" />
       } @else {
-        <div class="avatar-default" [style.background]="color()"><app-logo [size]="size() * 0.62" /></div>
+        <div class="avatar-default" [style.background]="color()"><app-avatar-mark [size]="size() * 0.62" /></div>
       }
       @if (status(); as s) {
         <span class="status status-{{ s }}" [style.width.px]="dot()" [style.height.px]="dot()" [attr.title]="statusLabel(s)"></span>

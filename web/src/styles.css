@@ -1083,6 +1083,11 @@ app-server-rail {
 .rail-btn.home {
   color: var(--text-normal);
 }
+/* The red symbol sits on white when highlighted (like the logo), not on the accent color. */
+.rail-btn.home:hover,
+.rail-item.active .rail-btn.home {
+  background: #fff;
+}
 .rail-btn.add {
   color: var(--green);
 }
