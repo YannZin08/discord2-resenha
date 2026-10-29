@@ -6159,6 +6159,26 @@ img.emoji.custom {
 :where(:root[data-msg='bubbles']) .message .msg-edit {
   align-self: stretch;
 }
+/* Fewer frames: a soft wash (no side bar) when you're mentioned, quieter @mentions and dates. */
+:where(:root[data-msg='bubbles']) .message.mentioned {
+  background: color-mix(in srgb, var(--mentioned-border) 5%, transparent);
+}
+:where(:root[data-msg='bubbles']) .message.mentioned::before {
+  display: none;
+}
+:where(:root[data-msg='bubbles']) .message .mention {
+  background: color-mix(in srgb, var(--mention-fg) 14%, transparent);
+}
+:where(:root[data-msg='bubbles']) .message .msg-time {
+  font-weight: 400;
+}
+/* Link previews sit under the bubble as a light card, without the colored bar. */
+:where(:root[data-msg='bubbles']) .message .embed {
+  margin-top: 6px;
+  background: color-mix(in srgb, var(--bg-textarea) 60%, transparent);
+  border: 1px solid var(--border-subtle);
+  border-left-color: var(--border-subtle) !important;
+}
 :where(:root[data-msg='bubbles']) .message.mine {
   align-items: flex-end;
   padding-left: 64px;
@@ -6170,34 +6190,19 @@ img.emoji.custom {
 :where(:root[data-msg='bubbles']) .message.mine .msg-hover-time {
   display: none;
 }
+/* Yours: the accent only tints the bubble, so the text stays as easy to read as everyone else's. */
 :where(:root[data-msg='bubbles']) .message.mine .msg-content {
   border-radius: 18px 4px 18px 18px;
-  background: var(--brand);
-  color: var(--on-brand);
+  background: color-mix(in srgb, var(--brand) 15%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 28%, transparent);
+  color: var(--text-normal);
 }
 :where(:root[data-msg='bubbles']) .message.mine.grouped .msg-content {
   border-radius: 18px;
 }
 :where(:root[data-msg='bubbles']) .message.mine .msg-content.jumbo {
   background: none;
-}
-:where(:root[data-msg='bubbles']) .message.mine .msg-content a,
-:where(:root[data-msg='bubbles']) .message.mine .msg-content .mention,
-:where(:root[data-msg='bubbles']) .message.mine .msg-content .edited {
-  color: inherit;
-}
-:where(:root[data-msg='bubbles']) .message.mine .msg-content a {
-  text-decoration: underline;
-}
-:where(:root[data-msg='bubbles']) .message.mine .msg-content .mention,
-:where(:root[data-msg='bubbles']) .message.mine .msg-content code.inline,
-:where(:root[data-msg='bubbles']) .message.mine .msg-content pre.codeblock {
-  background: rgba(0, 0, 0, 0.16);
-  border-color: transparent;
-  color: inherit;
-}
-:where(:root[data-msg='bubbles']) .message.mine .msg-content .edited {
-  opacity: 0.7;
+  box-shadow: none;
 }
 :where(:root[data-msg='bubbles']) .message.mine .reactions {
   justify-content: flex-end;
