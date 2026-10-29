@@ -4157,20 +4157,6 @@ app-profile-card {
   font-weight: 500;
   color: var(--text-muted);
 }
-.cg-channels {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.cg-chip {
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: var(--bg-mod-hover);
-  color: var(--header-secondary);
-}
 .cg-error {
   margin: -6px 0 0;
   font-size: 13px;

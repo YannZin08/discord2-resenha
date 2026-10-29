@@ -42,12 +42,6 @@ import { pickImage, squareImage } from './image';
               <input class="input" name="name" [(ngModel)]="name" appAutofocus maxlength="100" placeholder="Nome do servidor" />
             </label>
           </div>
-          <div class="cg-channels">
-            <span>Já vem com</span>
-            <span class="cg-chip"># geral</span>
-            <span class="cg-chip"># entradas-e-saídas</span>
-            <span class="cg-chip"># música</span>
-          </div>
           @if (error()) {
             <p class="cg-error">{{ error() }}</p>
           }
