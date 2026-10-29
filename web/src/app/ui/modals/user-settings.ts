@@ -200,6 +200,13 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                   <div class="message grouped">
                     <div class="msg-content">E as menções: <span class="mention">&#64;{{ me.displayName }}</span></div>
                   </div>
+                  <div class="message mine">
+                    <h3 class="msg-header">
+                      <span class="msg-author">Você</span>
+                      <span class="msg-time">Hoje às 12:01</span>
+                    </h3>
+                    <div class="msg-content">E assim ficam as suas</div>
+                  </div>
                 </div>
                 <h3 class="settings-h3">Tema</h3>
                 <div class="theme-grid">
@@ -227,6 +234,21 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                     </div>
                   }
                 </div>
+                <h3 class="settings-h3">Exibição das mensagens</h3>
+                <label class="radio-card" [class.active]="prefs.data().messageStyle === 'bubbles'">
+                  <input type="radio" name="msgStyle" [checked]="prefs.data().messageStyle === 'bubbles'" (change)="prefs.set('messageStyle', 'bubbles')" />
+                  <div>
+                    <div class="rc-title">Balões</div>
+                    <div class="rc-sub">As suas à direita, na cor de destaque, e as dos outros à esquerda.</div>
+                  </div>
+                </label>
+                <label class="radio-card" [class.active]="prefs.data().messageStyle === 'classic'">
+                  <input type="radio" name="msgStyle" [checked]="prefs.data().messageStyle === 'classic'" (change)="prefs.set('messageStyle', 'classic')" />
+                  <div>
+                    <div class="rc-title">Clássico</div>
+                    <div class="rc-sub">Todas em lista, com foto e nome, como no Discord.</div>
+                  </div>
+                </label>
                 <h3 class="settings-h3">Cor de destaque</h3>
                 <p class="hint">Pinta botões, menções e seleções por cima de qualquer tema.</p>
                 <div class="color-swatches accent-swatches">

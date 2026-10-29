@@ -4,8 +4,8 @@
   "description": "Converse com seus amigos por texto, voz e vídeo.",
   "start_url": "/channels/@me",
   "display": "standalone",
-  "background_color": "#313338",
-  "theme_color": "#1e1f22",
+  "background_color": "#261b33",
+  "theme_color": "#1b1225",
   "lang": "pt-BR",
   "icons": [
     { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },

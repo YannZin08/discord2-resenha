@@ -55,6 +55,9 @@
               }
             ],
             "styles": [
+              "@fontsource-variable/dm-sans/index.css",
+              "@fontsource-variable/dm-sans/standard-italic.css",
+              "@fontsource-variable/bricolage-grotesque/index.css",
               "src/styles.css"
             ],
             "deleteOutputPath": false

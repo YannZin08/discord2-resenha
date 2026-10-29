@@ -28,6 +28,7 @@ const color = (id: string, label: string, gradient: string, modal: string, popou
 });
 
 export const THEMES: Theme[] = [
+  { id: 'tarde', label: 'Fim de tarde', group: 'base', swatch: 'linear-gradient(135deg, #261b33 55%, #ffb547 55%)', bar: '#1b1225' },
   { id: 'light', label: 'Claro', group: 'base', swatch: '#ffffff', bar: '#e3e5e8' },
   { id: 'ash', label: 'Cinza', group: 'base', swatch: '#393a41', bar: '#26272c' },
   { id: 'dark', label: 'Escuro', group: 'base', swatch: '#313338', bar: '#1e1f22' },
@@ -58,10 +59,22 @@ export const THEMES: Theme[] = [
 /** Accent colors for buttons, links in focus and mentions; null keeps the theme's own. */
 export const ACCENTS = ['#5865f2', '#3ba55c', '#1abc9c', '#00a8fc', '#9b59b6', '#eb459f', '#ed4245', '#e67e22', '#f0b232', '#747f8d'];
 
-export function applyTheme(id: string, chatFont: number, accent: string | null) {
-  const theme = THEMES.find((t) => t.id === id) ?? THEMES[2];
+/** Dark text over light accents (manga, yellow, mint…), white over the rest. */
+function onColor(hex: string): string {
+  const n = parseInt(hex.slice(1, 7), 16);
+  if (Number.isNaN(n) || hex.length < 7) return '#ffffff';
+  const [r, g, b] = [n >> 16, (n >> 8) & 255, n & 255].map((c) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.4 ? '#1b1225' : '#ffffff';
+}
+
+export function applyTheme(id: string, chatFont: number, accent: string | null, messageStyle: 'bubbles' | 'classic' = 'bubbles') {
+  const theme = THEMES.find((t) => t.id === id) ?? THEMES[0];
   const root = document.documentElement;
   root.dataset['theme'] = theme.id;
+  root.dataset['msg'] = messageStyle;
   if (theme.tone) root.dataset['tone'] = theme.tone === 'light' ? 'color-light' : 'color';
   else delete root.dataset['tone'];
   const vars: Record<string, string | null> = {
@@ -73,6 +86,7 @@ export function applyTheme(id: string, chatFont: number, accent: string | null) 
     '--brand': accent,
     '--brand-hover': accent && `color-mix(in srgb, ${accent} 82%, black)`,
     '--brand-active': accent && `color-mix(in srgb, ${accent} 70%, black)`,
+    '--on-brand': accent && onColor(accent),
     '--mention-bg': accent && `color-mix(in srgb, ${accent} 30%, transparent)`,
     '--mention-fg': accent && `color-mix(in srgb, ${accent} ${theme.tone === 'light' || theme.id === 'light' ? '70%, black' : '45%, white'})`,
   };

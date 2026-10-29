@@ -145,6 +145,7 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
         class="message"
         [id]="'msg-' + m.id"
         [class.grouped]="grouped()"
+        [class.mine]="isMine()"
         [class.fresh]="fresh()"
         [class.mentioned]="mentioned()"
         [class.pending]="m.pending && !m.failed"

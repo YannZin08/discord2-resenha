@@ -28,6 +28,8 @@
   --brand: #5865f2;
   --brand-hover: #4752c4;
   --brand-active: #3c45a5;
+  /* Text and icons over --brand (dark over light accents). */
+  --on-brand: #ffffff;
   --green: #23a55a;
   --green-btn: #248046;
   --green-btn-hover: #1a6334;
@@ -59,6 +61,60 @@
 }
 
 /* ------------------------------------------------------------- themes */
+
+/* "Fim de tarde", the default look: aubergine grounds, mango accent, DM Sans and Bricolage Grotesque. */
+:root[data-theme='tarde'] {
+  --bg-primary: #261b33;
+  --bg-secondary: #22172e;
+  --bg-secondary-alt: #2c2039;
+  --bg-tertiary: #1b1225;
+  --bg-floating: #2c2039;
+  --bg-accent: #3a2d48;
+  --bg-input: #1b1225;
+  --bg-textarea: #33263f;
+  --bg-message-hover: rgba(245, 238, 248, 0.03);
+  --bg-mod-hover: rgba(216, 203, 227, 0.08);
+  --bg-mod-active: rgba(216, 203, 227, 0.14);
+  --bg-mod-selected: rgba(216, 203, 227, 0.16);
+  --text-normal: #ebe2f1;
+  --text-muted: #b7a8c4;
+  --text-link: #9dd9ff;
+  --header-primary: #f5eef8;
+  --header-secondary: #d8cbe3;
+  --interactive-normal: #c9bad6;
+  --interactive-hover: #f5eef8;
+  --interactive-active: #ffffff;
+  --interactive-muted: #5c4d6b;
+  --channel-icon: #8e7fa0;
+  --brand: #ffb547;
+  --brand-hover: #ffc56e;
+  --brand-active: #f0a22e;
+  --on-brand: #1b1225;
+  --green: #5ed69a;
+  --green-btn: #2f9e67;
+  --green-btn-hover: #27855a;
+  --red: #ff6b81;
+  --red-btn: #e5485f;
+  --red-btn-hover: #c23a4f;
+  --mention-bg: rgba(255, 181, 71, 0.22);
+  --mention-fg: #ffd59a;
+  --mentioned-bg: rgba(255, 181, 71, 0.08);
+  --mentioned-border: #ffb547;
+  --border-subtle: rgba(216, 203, 227, 0.12);
+  --elevation-low: 0 1px 0 rgba(10, 4, 18, 0.25);
+  --elevation-high: 0 12px 32px rgba(10, 4, 18, 0.45);
+  --font: 'DM Sans Variable', 'DM Sans', 'Noto Sans', 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Bricolage Grotesque Variable', 'DM Sans Variable', sans-serif;
+  --status-ring: var(--bg-secondary);
+  --ring-hover: #2c2039;
+  --ring-selected: #33263f;
+  --scroll-thumb: #3a2d48;
+  --scroll-track: transparent;
+  --spoiler: #1b1225;
+  --btn-secondary: #3a2d48;
+  --bg-modal: #261b33;
+  --bg-popout: #2c2039;
+}
 
 :root[data-theme='ash'] {
   --bg-primary: #393a41;
@@ -1014,7 +1070,7 @@ app-server-rail {
 .rail-item.active .rail-btn {
   border-radius: 16px;
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
 }
 .rail-btn.home {
   color: var(--text-normal);
@@ -1930,7 +1986,7 @@ app-dm-sidebar {
 }
 .mention:hover {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
 }
 .edited {
   font-size: 10px;
@@ -2281,7 +2337,7 @@ app-dm-sidebar {
   padding: 4px 12px;
   border-radius: 8px 8px 0 0;
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   font-size: 14px;
   z-index: 2;
 }
@@ -2544,7 +2600,7 @@ app-dm-sidebar {
   padding: 16px;
   border-radius: 8px;
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   text-align: center;
   outline: 2px dashed rgba(255, 255, 255, 0.5);
   outline-offset: -8px;
@@ -3318,7 +3374,7 @@ app-voice-stage {
 }
 .menu-item:hover {
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
 }
 .menu-item.danger {
   color: var(--red);
@@ -3359,7 +3415,7 @@ app-voice-stage {
 .menu-check.on {
   background: var(--brand);
   border-color: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
 }
 .menu-sep {
   height: 1px;
@@ -3980,7 +4036,7 @@ app-profile-card {
   height: 24px;
   border-radius: 50%;
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5171,7 +5227,7 @@ img.emoji.custom {
   align-items: center;
   justify-content: center;
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
 }
 .font-slider {
   display: flex;
@@ -5265,7 +5321,7 @@ img.emoji.custom {
   margin-left: 4px;
   border-radius: 3px;
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
   font-size: 10px;
   font-weight: 600;
   line-height: 15px;
@@ -5882,6 +5938,198 @@ img.emoji.custom {
 :root[data-motion='reduced'] *::after {
   animation: none !important;
   transition: none !important;
+}
+
+/* ------------------------------------------------------------- Fim de tarde: shapes and type */
+
+:where(:root[data-theme='tarde']) .chat-title,
+:where(:root[data-theme='tarde']) .guild-header-name,
+:where(:root[data-theme='tarde']) .chat-welcome h2,
+:where(:root[data-theme='tarde']) .modal-body h2,
+:where(:root[data-theme='tarde']) .settings-content h2,
+:where(:root[data-theme='tarde']) .settings-mobile-head h2,
+:where(:root[data-theme='tarde']) .voice-empty h2,
+:where(:root[data-theme='tarde']) .welcome-hash + h2 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+:where(:root[data-theme='tarde']) .chat-title {
+  font-size: 19px;
+}
+:where(:root[data-theme='tarde']) .guild-header-name {
+  font-size: 17px;
+}
+:where(:root[data-theme='tarde']) .chat-hash {
+  color: var(--brand);
+}
+/* The sidebar and the chat sit on the darker ground, the sidebar's top corner rounded. */
+@media (min-width: 769px) {
+  :where(:root[data-theme='tarde']) .layout {
+    background: var(--bg-tertiary);
+  }
+  :where(:root[data-theme='tarde']) .sidebar {
+    margin-top: 8px;
+    border-top-left-radius: 24px;
+    overflow: hidden;
+  }
+  :where(:root[data-theme='tarde']) .main {
+    margin-top: 8px;
+  }
+}
+:where(:root[data-theme='tarde']) .sidebar-header,
+:where(:root[data-theme='tarde']) .chat-header {
+  box-shadow: none;
+  border-bottom: 1px solid var(--border-subtle);
+}
+:where(:root[data-theme='tarde']) .rail-btn {
+  border-radius: 18px;
+  background: var(--bg-secondary-alt);
+}
+:where(:root[data-theme='tarde']) .rail-btn:hover,
+:where(:root[data-theme='tarde']) .rail-item.active .rail-btn {
+  border-radius: 18px;
+}
+:where(:root[data-theme='tarde']) .channel {
+  height: 38px;
+  border-radius: 12px;
+  margin-right: 10px;
+}
+:where(:root[data-theme='tarde']) .user-panel {
+  margin: 0 8px 8px;
+  border-radius: 18px;
+}
+:where(:root[data-theme='tarde']) .btn {
+  border-radius: 999px;
+  font-weight: 700;
+}
+:where(:root[data-theme='tarde']) .input,
+:where(:root[data-theme='tarde']) .search-box {
+  border-radius: 12px;
+}
+:where(:root[data-theme='tarde']) .composer-row {
+  border-radius: 24px;
+  padding-right: 10px;
+}
+:where(:root[data-theme='tarde']) .modal {
+  border-radius: 20px;
+}
+:where(:root[data-theme='tarde']) .menu {
+  border-radius: 14px;
+  padding: 6px;
+}
+:where(:root[data-theme='tarde']) .menu-item {
+  border-radius: 10px;
+}
+:where(:root[data-theme='tarde']) .emoji-picker,
+:where(:root[data-theme='tarde']) .soundboard,
+:where(:root[data-theme='tarde']) .profile-card {
+  border-radius: 18px;
+}
+:where(:root[data-theme='tarde']) .reaction {
+  height: 28px;
+  padding: 2px 9px;
+  border-radius: 14px;
+}
+:where(:root[data-theme='tarde']) .embed {
+  border-radius: 14px;
+}
+:where(:root[data-theme='tarde']) .mention {
+  border-radius: 6px;
+}
+:where(:root[data-theme='tarde']) .bot-tag {
+  border-radius: 6px;
+}
+:where(:root[data-theme='tarde']) .tile {
+  border-radius: 18px;
+}
+:where(:root[data-theme='tarde']) .settings-nav button {
+  border-radius: 12px;
+}
+
+/* ------------------------------------------------------------- message bubbles */
+
+/* "Balões" (Aparência): each message's text sits in a bubble; yours go to the right in the accent color. */
+:where(:root[data-msg='bubbles']) .message:not(.system) {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding-right: 64px;
+}
+:where(:root[data-msg='bubbles']) .message:not(.system):hover {
+  background: transparent;
+}
+:where(:root[data-msg='bubbles']) .message .msg-header {
+  margin-bottom: 3px;
+}
+:where(:root[data-msg='bubbles']) .message .msg-content {
+  max-width: min(680px, 100%);
+  padding: 8px 14px;
+  border-radius: 4px 18px 18px 18px;
+  background: var(--bg-textarea);
+}
+:where(:root[data-msg='bubbles']) .message.grouped .msg-content {
+  margin-top: 2px;
+  border-radius: 18px;
+}
+:where(:root[data-msg='bubbles']) .message .msg-content.jumbo {
+  padding: 0;
+  background: none;
+}
+:where(:root[data-msg='bubbles']) .message .msg-edit {
+  align-self: stretch;
+}
+:where(:root[data-msg='bubbles']) .message.mine {
+  align-items: flex-end;
+  padding-left: 64px;
+  padding-right: 16px;
+}
+:where(:root[data-msg='bubbles']) .message.mine .msg-avatar,
+:where(:root[data-msg='bubbles']) .message.mine .msg-author,
+:where(:root[data-msg='bubbles']) .message.mine .bot-tag,
+:where(:root[data-msg='bubbles']) .message.mine .msg-hover-time {
+  display: none;
+}
+:where(:root[data-msg='bubbles']) .message.mine .msg-content {
+  border-radius: 18px 4px 18px 18px;
+  background: var(--brand);
+  color: var(--on-brand);
+}
+:where(:root[data-msg='bubbles']) .message.mine.grouped .msg-content {
+  border-radius: 18px;
+}
+:where(:root[data-msg='bubbles']) .message.mine .msg-content.jumbo {
+  background: none;
+}
+:where(:root[data-msg='bubbles']) .message.mine .msg-content a,
+:where(:root[data-msg='bubbles']) .message.mine .msg-content .mention,
+:where(:root[data-msg='bubbles']) .message.mine .msg-content .edited {
+  color: inherit;
+}
+:where(:root[data-msg='bubbles']) .message.mine .msg-content a {
+  text-decoration: underline;
+}
+:where(:root[data-msg='bubbles']) .message.mine .msg-content .mention,
+:where(:root[data-msg='bubbles']) .message.mine .msg-content code.inline,
+:where(:root[data-msg='bubbles']) .message.mine .msg-content pre.codeblock {
+  background: rgba(0, 0, 0, 0.16);
+  border-color: transparent;
+  color: inherit;
+}
+:where(:root[data-msg='bubbles']) .message.mine .msg-content .edited {
+  opacity: 0.7;
+}
+:where(:root[data-msg='bubbles']) .message.mine .reactions {
+  justify-content: flex-end;
+}
+@media (max-width: 768px) {
+  :where(:root[data-msg='bubbles']) .message:not(.system) {
+    padding-right: 28px;
+  }
+  :where(:root[data-msg='bubbles']) .message.mine {
+    padding-left: 48px;
+    padding-right: 12px;
+  }
 }
 
 /* ------------------------------------------------------------- phones */

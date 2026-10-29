@@ -77,7 +77,7 @@ export class App {
   constructor() {
     void this.session.init();
     enableLongPress();
-    effect(() => applyTheme(this.prefs.data().theme, this.prefs.data().chatFont, this.prefs.data().accent));
+    effect(() => applyTheme(this.prefs.data().theme, this.prefs.data().chatFont, this.prefs.data().accent, this.prefs.data().messageStyle));
     // The full emoji list (for :nomes: and the picker) comes in once the app is open.
     effect(() => {
       if (this.store.ready()) void loadEmojis();

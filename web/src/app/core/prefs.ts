@@ -53,6 +53,10 @@ interface PrefsData {
   skinTone: number;
   collapsed: Record<number, boolean>;
   theme: string;
+  /** Chat bubbles (yours on the right) or Discord's classic list. */
+  messageStyle: 'bubbles' | 'classic';
+  /** Version of the default look this device has been moved to (see load()). */
+  look: number;
   /** Accent color over the theme (buttons, mentions); null keeps the theme's own. */
   accent: string | null;
   chatFont: number;
@@ -79,7 +83,9 @@ const DEFAULTS: PrefsData = {
   recentEmojis: ['👍', '😂', '❤️', '😮', '😢', '🔥', '🎉', '👀'],
   skinTone: 0,
   collapsed: {},
-  theme: 'dark',
+  theme: 'tarde',
+  messageStyle: 'bubbles',
+  look: 2,
   accent: null,
   chatFont: 16,
   reduceMotion: false,
@@ -92,6 +98,11 @@ const DEFAULTS: PrefsData = {
 
 function load(): PrefsData {
   const saved = store<Partial<PrefsData>>('prefs', {});
+  // The "Fim de tarde" look became the default: devices still on the old default theme move to it once.
+  if ((saved.look ?? 1) < 2) {
+    if (!saved.theme || saved.theme === 'dark') saved.theme = 'tarde';
+    saved.look = 2;
+  }
   // Nested objects get defaults for fields added after they were saved.
   return { ...DEFAULTS, ...saved, mic: { ...DEFAULT_MIC, ...saved.mic }, stream: { ...MAX_STREAM, ...saved.stream } };
 }
