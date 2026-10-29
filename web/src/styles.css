@@ -2106,24 +2106,29 @@ app-dm-sidebar {
   color: var(--red);
 }
 
+/* Hover bar: a small floating pill, quick reactions in equal slots, a divider, then the actions. */
 .msg-toolbar {
   position: absolute;
   right: 14px;
-  top: -16px;
+  top: -18px;
   display: none;
   align-items: center;
-  height: 32px;
-  border-radius: 4px;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 12px;
+  border: 1px solid var(--border-subtle);
   background: var(--bg-popout);
-  box-shadow: 0 0 0 1px rgba(4, 4, 5, 0.15);
+  box-shadow: var(--elevation-high);
   z-index: 2;
 }
 .message:hover .msg-toolbar {
   display: flex;
 }
 .msg-toolbar button {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2133,9 +2138,18 @@ app-dm-sidebar {
   background: var(--bg-mod-hover);
   color: var(--interactive-hover);
 }
+/* Unicode and custom emojis (any picture shape) all fit the same 20px square. */
 .quick-react img {
   width: 20px;
   height: 20px;
+  object-fit: contain;
+  display: block;
+}
+.tb-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--border-subtle);
 }
 
 .attachments {

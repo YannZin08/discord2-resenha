@@ -321,15 +321,16 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
         @if (!m.pending && !editing()) {
           <div class="msg-toolbar">
             @for (e of quickReactions(); track e) {
-              <button class="quick-react" (click)="toggleReaction(e)"><img [src]="emojiUrl(e)" [alt]="emojiLabel(e)" /></button>
+              <button class="quick-react" [appTip]="emojiLabel(e)" (click)="toggleReaction(e)"><img [src]="emojiUrl(e)" [alt]="emojiLabel(e)" /></button>
             }
-            <button appTip="Adicionar reação" (click)="pickReaction($event)"><app-icon name="addReaction" [size]="20" /></button>
+            <span class="tb-sep"></span>
+            <button appTip="Adicionar reação" (click)="pickReaction($event)"><app-icon name="addReaction" [size]="18" /></button>
             @if (isMine()) {
-              <button appTip="Editar" (click)="startEdit()"><app-icon name="edit" [size]="20" /></button>
+              <button appTip="Editar" (click)="startEdit()"><app-icon name="editText" [size]="18" /></button>
             } @else {
-              <button appTip="Responder" (click)="reply()"><app-icon name="reply" [size]="20" /></button>
+              <button appTip="Responder" (click)="reply()"><app-icon name="reply" [size]="18" /></button>
             }
-            <button appTip="Mais" (click)="menu($event)"><app-icon name="more" [size]="20" /></button>
+            <button appTip="Mais" (click)="menu($event)"><app-icon name="more" [size]="18" /></button>
           </div>
         }
       </div>
