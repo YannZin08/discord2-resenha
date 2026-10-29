@@ -1,6 +1,15 @@
 // AudioWorklet that decides when the microphone is "open", like Discord's input modes:
 // voice activity (manual or automatic sensitivity) or push-to-talk with a release delay.
 // It runs on the audio thread, so it keeps working while the tab is in the background.
+//
+// The audio goes out LOOKAHEAD late while the level is measured on the fresh input, so the
+// gate is already open when the first syllable arrives (no clipped starts of words). It opens
+// fast and closes with a short fade, so the ends of words don't get chopped either.
+
+const LOOKAHEAD = 0.02; // s
+const ATTACK = 0.005; // s, gate opening fade
+const RELEASE = 0.06; // s, gate closing fade
+const VAD_HOLD = 0.35; // s the gate stays open after the voice drops below the threshold
 
 class VoiceGate extends AudioWorkletProcessor {
   constructor() {
@@ -14,6 +23,10 @@ class VoiceGate extends AudioWorkletProcessor {
     this.gain = 0;
     this.holdUntil = 0;
     this.blocks = 0;
+    // Delay line for the look-ahead, one per channel.
+    this.delay = Math.max(1, Math.round(sampleRate * LOOKAHEAD));
+    this.rings = [];
+    this.pos = 0;
     // Speaking indicator: on after a few voiced blocks (~10 ms, so a click doesn't light it),
     // off shortly after the voice stops; only while the gate is actually letting audio out.
     this.voiced = 0;
@@ -41,20 +54,31 @@ class VoiceGate extends AudioWorkletProcessor {
     const threshold = this.auto ? autoThreshold : this.threshold;
 
     const want = this.mode === 'open' || (this.mode === 'ptt' ? this.ptt : db > threshold);
-    if (want) this.holdUntil = currentTime + (this.mode === 'ptt' ? this.releaseMs / 1000 : 0.3);
+    if (want) this.holdUntil = currentTime + (this.mode === 'ptt' ? this.releaseMs / 1000 : VAD_HOLD);
     const open = want || currentTime < this.holdUntil;
 
-    // 10 ms ramp avoids clicks when the gate opens or closes.
     const target = open ? 1 : 0;
-    const step = 1 / (sampleRate * 0.01);
+    const up = 1 / (sampleRate * ATTACK);
+    const down = 1 / (sampleRate * RELEASE);
     const len = input[0].length;
+    for (let c = 0; c < output.length; c++) {
+      if (!this.rings[c]) this.rings[c] = new Float32Array(this.delay);
+    }
+    let pos = this.pos;
+    let gain = this.gain;
     for (let i = 0; i < len; i++) {
-      this.gain += Math.max(-step, Math.min(step, target - this.gain));
+      gain += target > gain ? Math.min(up, target - gain) : -Math.min(down, gain - target);
       for (let c = 0; c < output.length; c++) {
         const src = input[c] || input[0];
-        output[c][i] = src[i] * this.gain;
+        const ring = this.rings[c];
+        const late = ring[pos];
+        ring[pos] = src[i];
+        output[c][i] = late * gain;
       }
+      pos = pos + 1 === this.delay ? 0 : pos + 1;
     }
+    this.pos = pos;
+    this.gain = gain;
 
     // With push-to-talk or an always-open mic the gate says nothing about voice, so the
     // indicator uses the automatic threshold there.

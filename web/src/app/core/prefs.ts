@@ -23,6 +23,8 @@ export interface MicSettings {
   noiseSuppression: 'advanced' | 'standard' | 'none';
   echoCancellation: boolean;
   autoGain: boolean;
+  /** Discord's "Qualidade de serviço com alta prioridade de pacotes". */
+  qos: boolean;
 }
 
 export const DEFAULT_MIC: MicSettings = {
@@ -35,6 +37,7 @@ export const DEFAULT_MIC: MicSettings = {
   noiseSuppression: 'advanced',
   echoCancellation: true,
   autoGain: true,
+  qos: true,
 };
 
 interface PrefsData {

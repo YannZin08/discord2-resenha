@@ -99,6 +99,59 @@ async function pickStreamCodec(): Promise<string | null> {
   return candidates.includes('video/H264') ? 'video/H264' : (candidates[0] ?? null);
 }
 
+/** Voice bitrate: Discord sends 64 kbps by default (96 on better servers); browsers default to ~32. */
+export const VOICE_BITRATE = 96_000;
+/** Ceiling for any Opus stream we receive (the mic sender sets its own target; screen audio is stereo). */
+const OPUS_CAP = 128_000;
+
+/**
+ * Opus settings we ask the other side to send us with (the description we signal is what its
+ * encoder reads): a higher bitrate ceiling, in-band error correction so a lost packet doesn't
+ * become a gap, and no DTX (the voice gate already silences the mic; DTX's comfort noise sounds
+ * worse). Only the copy we send is changed; our own local description stays as the browser made it.
+ */
+function tuneOpus(desc: RTCSessionDescription | null): RTCSessionDescriptionInit | null {
+  if (!desc?.sdp) return desc;
+  const want: Record<string, string> = { maxaveragebitrate: String(OPUS_CAP), useinbandfec: '1', usedtx: '0' };
+  const fmt = (kv: Map<string, string>) => [...kv].map(([k, v]) => `${k}=${v}`).join(';');
+  let sdp = desc.sdp;
+  // Each audio section (mic, screen audio) has its own lines, often with the same payload type.
+  for (const pt of new Set([...sdp.matchAll(/a=rtpmap:(\d+) opus\/48000/gi)].map((m) => m[1]))) {
+    sdp = sdp.replace(new RegExp(`a=fmtp:${pt} ([^\\r\\n]*)`, 'g'), (_, params: string) => {
+      const kv = new Map(
+        params
+          .split(';')
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .map((p) => p.split('=') as [string, string]),
+      );
+      for (const [k, v] of Object.entries(want)) kv.set(k, v);
+      return `a=fmtp:${pt} ${fmt(kv)}`;
+    });
+    // Browsers always write an fmtp line for Opus; if one ever didn't, add ours after the rtpmap.
+    if (!sdp.includes(`a=fmtp:${pt} `)) {
+      sdp = sdp.replace(new RegExp(`(a=rtpmap:${pt} opus/48000[^\\r\\n]*\\r\\n)`, 'gi'), `$1a=fmtp:${pt} ${fmt(new Map(Object.entries(want)))}\r\n`);
+    }
+  }
+  return { type: desc.type, sdp };
+}
+
+/** The mic's encoder target and, with "alta prioridade de pacotes", DSCP marking so routers favour voice. */
+async function tuneVoiceSender(sender: RTCRtpSender, qos: boolean) {
+  if (sender.track?.kind !== 'audio') return;
+  try {
+    const params = sender.getParameters();
+    if (!params.encodings?.length) params.encodings = [{}];
+    const e = params.encodings[0];
+    e.maxBitrate = VOICE_BITRATE;
+    e.priority = qos ? 'high' : 'low';
+    e.networkPriority = qos ? 'high' : 'low';
+    await sender.setParameters(params);
+  } catch {
+    // not negotiated yet or not supported: the SDP settings still apply
+  }
+}
+
 function preferCodec(t: RTCRtpTransceiver, mime: string | null) {
   if (!mime || !t.setCodecPreferences) return;
   const rank = (c: RTCRtpCodec) => {
@@ -522,6 +575,7 @@ export class Voice {
   async updateMicSettings(next: MicSettings) {
     const prev = this.prefs.get('mic');
     this.prefs.set('mic', next);
+    if (prev.qos !== next.qos) for (const p of this.peers.values()) this.tuneSenders(p);
     if (!this.pipe) return;
     if (MicPipeline.needsRestart(prev, next)) await this.restartMic();
     else this.pipe.update(next);
@@ -552,8 +606,15 @@ export class Voice {
       const sender = p.senders.find((s) => s.track?.kind === 'audio');
       if (sender) await sender.replaceTrack(track);
       else if (track && this.mic && p.localAttached) p.senders.push(p.pc.addTrack(track, this.mic));
+      this.tuneSenders(p);
     }
     if (this.active()) this.sendState();
+  }
+
+  /** Voice bitrate and packet priority on this peer's mic sender. */
+  private tuneSenders(peer: Peer) {
+    const qos = this.prefs.get('mic').qos;
+    for (const s of peer.senders) void tuneVoiceSender(s, qos);
   }
 
   changeOutputDevice(deviceId: string) {
@@ -685,6 +746,7 @@ export class Voice {
     const pc = peer.pc;
     if (this.mic) for (const t of this.mic.getAudioTracks()) peer.senders.push(pc.addTrack(t, this.mic));
     else if (!peer.polite) pc.addTransceiver('audio', { direction: 'recvonly' });
+    this.tuneSenders(peer);
     const cam = this.localCamera();
     if (cam) for (const t of cam.getVideoTracks()) peer.cameraSenders.push(pc.addTrack(t, cam));
     const screen = this.localScreen();
@@ -725,7 +787,7 @@ export class Voice {
       try {
         peer.makingOffer = true;
         await pc.setLocalDescription();
-        this.signal(sid, { description: pc.localDescription });
+        this.signal(sid, { description: tuneOpus(pc.localDescription) });
       } catch (e) {
         console.warn('negotiation failed', e);
       } finally {
@@ -745,6 +807,8 @@ export class Voice {
     };
     pc.onconnectionstatechange = () => {
       this.peerStates.update((s) => ({ ...s, [sid]: pc.connectionState }));
+      // Some browsers only take sender settings once the connection is negotiated.
+      if (pc.connectionState === 'connected') this.tuneSenders(peer);
       if (pc.connectionState === 'failed' && !peer.polite) pc.restartIce();
     };
     // If a connection never comes up (lost candidate, network change), the impolite side
@@ -837,7 +901,7 @@ export class Voice {
         if (desc.type === 'offer') {
           this.attachLocalMedia(peer);
           await pc.setLocalDescription();
-          this.signal(from, { description: pc.localDescription });
+          this.signal(from, { description: tuneOpus(pc.localDescription) });
         }
       } else if (data.candidate) {
         try {

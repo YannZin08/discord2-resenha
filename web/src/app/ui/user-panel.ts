@@ -51,7 +51,7 @@ import { Tip } from './tooltip';
     @if (store.me(); as me) {
       <div class="user-panel">
         <div class="up-user" (click)="statusMenu($event)">
-          <app-avatar [user]="me" [size]="32" [status]="myStatus()" [speaking]="voice.speaking().has(me.id)" />
+          <app-avatar [user]="me" [size]="32" [status]="myStatus()" />
           <div class="up-names">
             <div class="up-display">{{ me.displayName }}</div>
             <div class="up-sub">

@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { MicLevel, MicPipeline } from '../../core/mic';
 import { MicSettings, Prefs } from '../../core/prefs';
 import { Ui } from '../../core/ui';
-import { Voice } from '../../core/voice';
+import { VOICE_BITRATE, Voice } from '../../core/voice';
 
 /** Readable name for a KeyboardEvent.code, e.g. "KeyV" → "V". */
 function keyLabel(code: string | null): string {
@@ -166,6 +166,21 @@ function keyLabel(code: string | null): string {
     }
 
     <div class="settings-divider"></div>
+    <h2>Avançado</h2>
+    <label class="toggle-row">
+      <div>
+        <div class="toggle-title">Qualidade de serviço com alta prioridade de pacotes</div>
+        <div class="hint">
+          Pede à sua rede que trate o áudio da chamada com prioridade. Se a sua internet ficar estranha com isso ligado, desligue.
+        </div>
+      </div>
+      <input type="checkbox" class="switch" [checked]="m.qos" (change)="set({ qos: $any($event.target).checked })" />
+    </label>
+    <p class="hint">
+      A voz vai a {{ bitrate }} kbps com correção de perda de pacotes, filtro de graves e proteção contra estouro, como no Discord.
+    </p>
+
+    <div class="settings-divider"></div>
     <h2>Configurações de vídeo</h2>
     <label class="field-label">Câmera</label>
     <select class="input" [ngModel]="prefs.data().videoDevice" (ngModelChange)="prefs.set('videoDevice', $event)">
@@ -181,6 +196,7 @@ export class VoiceSettings implements OnDestroy {
   readonly voice = inject(Voice);
   private ui = inject(Ui);
   readonly meterBars = Array.from({ length: 40 }, (_, i) => i);
+  readonly bitrate = VOICE_BITRATE / 1000;
   readonly devices = signal<MediaDeviceInfo[]>([]);
   readonly inputs = computed(() => this.devices().filter((d) => d.kind === 'audioinput' && d.deviceId !== 'default'));
   readonly outputs = computed(() => this.devices().filter((d) => d.kind === 'audiooutput' && d.deviceId !== 'default'));

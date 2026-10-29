@@ -25,7 +25,7 @@ interface Section {
         <h3 class="member-section">{{ s.title }} — {{ s.users.length }}</h3>
         @for (u of s.users; track u.id) {
           <div class="member" [class.offline]="s.offline" (click)="profile($event, u)" (contextmenu)="menu($event, u)">
-            <app-avatar [user]="u" [size]="32" [status]="store.statusOf(u.id)" [speaking]="voice.speaking().has(u.id)" />
+            <app-avatar [user]="u" [size]="32" [status]="store.statusOf(u.id)" />
             <div class="member-text">
               <div class="member-name" [style.color]="color(u.id)">
                 <span>{{ store.nameIn(guildId(), u.id) }}</span>

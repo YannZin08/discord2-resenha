@@ -12,9 +12,9 @@ export interface MicLevel {
 let rnnoiseWasm: Promise<ArrayBuffer> | null = null;
 
 /**
- * Microphone → (AI noise suppression) → input volume → voice gate → stream sent to the call.
- * Mirrors Discord's voice processing; the browser's own echo cancellation, noise
- * suppression ("Padrão") and gain control are applied at capture.
+ * Microphone → low-cut filter → (AI noise suppression) → input volume → voice gate → limiter →
+ * stream sent to the call. Mirrors Discord's voice processing; the browser's own echo
+ * cancellation, noise suppression ("Padrão") and gain control are applied at capture.
  */
 export class MicPipeline {
   readonly stream: MediaStream;
@@ -45,6 +45,8 @@ export class MicPipeline {
         noiseSuppression: s.noiseSuppression === 'standard',
         autoGainControl: s.autoGain,
         channelCount: 1,
+        // Opus and RNNoise both run at 48 kHz: capturing there avoids a resampling step.
+        sampleRate: { ideal: 48000 },
       },
     });
     try {
@@ -65,14 +67,30 @@ export class MicPipeline {
         }
       }
       const source = ctx.createMediaStreamSource(raw);
+      // Cuts rumble below the voice (desk bumps, AC hum, breathing on the mic), like Discord does.
+      const lowCut = ctx.createBiquadFilter();
+      lowCut.type = 'highpass';
+      lowCut.frequency.value = 80;
+      lowCut.Q.value = 0.7;
       const volume = ctx.createGain();
       const gate = new AudioWorkletNode(ctx, 'voice-gate', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
+      // Only touches peaks (a shout, input volume above 100%) so they don't clip and crackle.
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.value = -6;
+      limiter.knee.value = 6;
+      limiter.ratio.value = 12;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.15;
       const dest = ctx.createMediaStreamDestination();
       const monitor = ctx.createGain();
       monitor.gain.value = 0;
-      (denoise ? source.connect(denoise).connect(volume) : source.connect(volume)).connect(gate);
-      gate.connect(dest);
-      gate.connect(monitor).connect(ctx.destination);
+      source.connect(lowCut);
+      (denoise ? lowCut.connect(denoise).connect(volume) : lowCut.connect(volume)).connect(gate);
+      gate.connect(limiter);
+      limiter.connect(dest);
+      limiter.connect(monitor).connect(ctx.destination);
+      // Tells the encoder this is speech (Opus voice mode).
+      for (const t of dest.stream.getAudioTracks()) t.contentHint = 'speech';
       const p = new MicPipeline(ctx, raw, volume, gate, denoise, dest, monitor);
       p.update(s);
       return p;
