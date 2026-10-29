@@ -109,9 +109,12 @@ export class Gateway {
       this.state.set('reconnecting');
       if (!opened) {
         // Could be an expired session: let the app check before retrying.
-        void fetch('/api/auth/me', { credentials: 'same-origin' }).then((r) => {
-          if (r.status === 401) this.onUnauthorized?.();
-        });
+        // Offline or the server restarting: no answer is fine, the retry below handles it.
+        void fetch('/api/auth/me', { credentials: 'same-origin' })
+          .then((r) => {
+            if (r.status === 401) this.onUnauthorized?.();
+          })
+          .catch(() => undefined);
       }
       const delay = Math.min(1000 * 2 ** this.retries, 15_000) + Math.random() * 500;
       this.retries++;

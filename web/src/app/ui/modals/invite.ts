@@ -31,7 +31,7 @@ import { Avatar, Icon } from '../shared';
             }
           </div>
         }
-        <label class="field-label">Ou envie um link de convite para um amigo</label>
+        <label class="field-label">{{ friends().length ? 'Ou envie um link de convite para um amigo' : 'Envie este link de convite para um amigo' }}</label>
         <div class="copy-box" [class.copied]="copied()">
           <input readonly [value]="link()" (focus)="$any($event.target).select()" />
           <button class="btn" [class.btn-brand]="!copied()" [class.btn-success]="copied()" (click)="copy()" [disabled]="!code()">

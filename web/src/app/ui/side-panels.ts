@@ -131,7 +131,7 @@ export class PinsPanel {
     <aside class="side-panel">
       <header class="side-panel-head">
         <app-icon name="search" [size]="20" />
-        <h2>{{ loading() ? 'Buscando...' : results().length + ' resultado(s)' }}</h2>
+        <h2>{{ loading() ? 'Buscando...' : results().length ? results().length + (results().length === 1 ? ' resultado' : ' resultados') : 'Nenhum resultado' }}</h2>
         <button class="icon-btn" (click)="ui.panel.set(null)"><app-icon name="close" [size]="20" /></button>
       </header>
       <div class="side-panel-body scroller thin">

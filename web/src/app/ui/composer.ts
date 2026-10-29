@@ -246,7 +246,9 @@ export class Composer {
   private emojiText(picked: string): string {
     const c = parseCustom(picked);
     if (!c) return picked;
-    return customByName(this.store, this.channel().guildId, c.name)?.id === +c.id ? `:${c.name}:` : picked;
+    if (customByName(this.store, this.channel().guildId, c.name)?.id === +c.id) return `:${c.name}:`;
+    // A "nome:id" key (how reactions store it) goes in as the emoji token, never as raw text.
+    return picked.startsWith('<') ? picked : `<:${c.name}:${c.id}>`;
   }
 
   onInput(v: string) {
