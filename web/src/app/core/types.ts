@@ -16,11 +16,29 @@ export interface User {
   themeColors?: [string, string] | null;
   about: string;
   customStatus: string;
+  /** The personal side of the profile; missing on old data (DEFAULT_PROFILE applies). */
+  profile?: Profile;
   /** What they're playing ("Jogando X"); `until` is set when the game detector reported it. */
   activity?: Activity | null;
   createdAt: number;
   status?: StatusPref;
   bot?: boolean;
+}
+
+/** Mirrors worker/profile.ts. */
+export type StatusMode = 'playing' | 'listening' | 'available' | 'busy' | 'resenha';
+export type VibeLabel = 'Vibe' | 'Modo' | 'Energia' | 'Tag' | 'Personalidade';
+export type ProfileStyle = 'card' | 'immersive' | 'minimal';
+
+export interface Profile {
+  status: { mode: StatusMode | null; emoji: string | null; color: string | null };
+  vibe: { label: VibeLabel; text: string; emoji: string | null; color: string | null } | null;
+  interests: string[];
+  link: string | null;
+  style: ProfileStyle;
+  /** Darkening over the banner, 0–90 %; null = from the picture's brightness. */
+  overlay: number | null;
+  privacy: { interests: boolean; links: boolean; reactions: boolean; status: boolean; joined: boolean };
 }
 
 export interface Activity {

@@ -163,8 +163,12 @@ export class ContextMenu {
         <div class="profile-popout" #el [style.left.px]="pos().x" [style.top.px]="pos().y">
           <app-profile-card [user]="u" [guildId]="p.guildId" [compact]="!!p.compact">
             @if (p.guildId != null && store.member(p.guildId, u.id); as m) {
-              <div class="profile-section">
-                <h3>{{ m.roles.length ? 'Cargos' : 'Sem cargos' }}</h3>
+              <!-- No roles, no section; an admin still gets the button to give one. -->
+              @if (m.roles.length || (admin() && addableRoles().length)) {
+              <div class="profile-section profile-roles">
+                @if (m.roles.length) {
+                  <h3>Cargos</h3>
+                }
                 <div class="role-pills">
                   @for (r of memberRoles(); track r.id) {
                     <span class="role-pill">
@@ -177,10 +181,16 @@ export class ContextMenu {
                     </span>
                   }
                   @if (admin() && addableRoles().length) {
-                    <button class="role-add" (click)="addRoleMenu($event)" title="Adicionar cargo"><app-icon name="plus" [size]="14" /></button>
+                    <button class="role-add" [class.labeled]="!m.roles.length" (click)="addRoleMenu($event)" title="Adicionar cargo">
+                      <app-icon name="plus" [size]="14" />
+                      @if (!m.roles.length) {
+                        <span>Adicionar cargo</span>
+                      }
+                    </button>
                   }
                 </div>
               </div>
+              }
             }
             @if (u.id !== store.me()?.id && !u.bot) {
               <input

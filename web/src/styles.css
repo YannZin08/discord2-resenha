@@ -3591,8 +3591,16 @@ app-voice-stage {
   position: fixed;
   z-index: 401;
   width: 300px;
+  /* A full profile can be taller than a small window: it scrolls instead of being cut. */
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
   border-radius: 8px;
   box-shadow: var(--elevation-high);
+}
+.profile-popout::-webkit-scrollbar {
+  display: none;
 }
 app-profile-card {
   display: block;
@@ -3603,8 +3611,10 @@ app-profile-card {
   border-radius: 8px;
   overflow: hidden;
   background: var(--bg-popout);
+  --card-bg: var(--bg-popout);
   --status-ring: var(--bg-popout);
   --avatar-top: 16px;
+  --shade: 0.35;
 }
 /* With a picture the banner is taller (17:6 like Discord) and the avatar overlaps its bottom. */
 .profile-card.banner-image {
@@ -3613,13 +3623,17 @@ app-profile-card {
 /* Profile theme: the whole card in a gradient, the text on a see-through panel. */
 .profile-card.themed {
   background: linear-gradient(180deg, var(--profile-1), var(--profile-2));
+  --card-bg: var(--profile-1);
   --status-ring: var(--profile-1);
 }
 .profile-card.themed .profile-avatar {
   background: var(--profile-1);
 }
+/* On a theme gradient the text sits on a soft see-through panel, so any two colors stay readable. */
 .profile-card.themed .profile-body {
-  background: color-mix(in srgb, var(--bg-floating) 78%, transparent);
+  padding: 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-floating) 72%, transparent);
 }
 .profile-preview-card .profile-card {
   box-shadow: var(--elevation-high);
@@ -3630,10 +3644,28 @@ app-profile-card {
   background-position: center;
 }
 .profile-banner {
+  position: relative;
   height: 60px;
+  overflow: hidden;
 }
 .profile-banner.has-image {
   height: 106px;
+}
+/* The GIF or picture as a real image (stays animated), cropped to fill. */
+.profile-banner-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* Shade over the picture (darker for bright ones) that melts into the card at the bottom. */
+.profile-banner-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, transparent 45%, var(--card-bg) 100%),
+    rgba(10, 6, 16, var(--shade));
 }
 .profile-avatar {
   position: absolute;
@@ -3670,79 +3702,226 @@ app-profile-card {
   transform: scale(0.88);
   transition-duration: 0.06s;
 }
-/* Custom status as a thought bubble next to the avatar, like Discord's. */
-.profile-bubble {
-  position: absolute;
-  left: 110px;
-  top: calc(var(--avatar-top) + 24px);
-  max-width: 174px;
-  padding: 6px 10px;
-  border-radius: 14px;
-  background: var(--bg-floating);
-  color: var(--text-normal);
-  font-size: 13px;
-  line-height: 1.3;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
-}
-.profile-bubble span {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-  word-break: break-word;
-}
-.profile-bubble::before,
-.profile-bubble::after {
-  content: '';
-  position: absolute;
-  border-radius: 50%;
-  background: var(--bg-floating);
-}
-.profile-bubble::before {
-  left: -3px;
-  bottom: -1px;
-  width: 9px;
-  height: 9px;
-}
-.profile-bubble::after {
-  left: -9px;
-  bottom: -6px;
-  width: 5px;
-  height: 5px;
-}
+/* No box around the text: it sits on the card itself, sections spaced evenly. */
 .profile-body {
+  position: relative;
   margin: 52px 16px 16px;
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--bg-floating);
   /* Long links and words without spaces wrap instead of running out of the card. */
   min-width: 0;
   overflow-wrap: anywhere;
 }
 .profile-body .profile-section {
-  margin: 12px 0 0;
+  margin: 14px 0 0;
 }
 .pn-dot {
   margin: 0 4px;
 }
-.profile-badges {
-  display: inline-flex;
-  gap: 2px;
+/* Status line under the name: emoji (or a colored dot) and "Jogando · Valorant". */
+.profile-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin-top: 8px;
-  padding: 2px 4px;
-  border-radius: 8px;
-  border: 1px solid var(--border-subtle);
+  font-size: 13px;
+  color: var(--status-color, var(--text-normal));
 }
-.profile-badge {
-  width: 24px;
-  height: 24px;
+.profile-status span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.profile-status .emoji {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.ps-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-color, var(--green));
+}
+/* "Vibe: Caótico": a personal tag in the person's color (not a server role). */
+.profile-vibe {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 4px;
+  gap: 5px;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--header-primary);
+  background: color-mix(in srgb, var(--vibe, var(--brand)) 22%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vibe, var(--brand)) 45%, transparent);
 }
-.profile-badge:hover {
+.profile-vibe b {
+  font-weight: 600;
+  color: var(--vibe, var(--brand));
+}
+.profile-vibe .emoji {
+  width: 15px;
+  height: 15px;
+}
+.profile-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-link);
+  overflow-wrap: anywhere;
+}
+.profile-link app-icon {
+  flex: none;
+  color: var(--interactive-normal);
+}
+.profile-tags,
+.profile-selos,
+.profile-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.profile-tag {
+  max-width: 100%;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--header-secondary);
+  background: color-mix(in srgb, var(--profile-2, var(--brand)) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--profile-2, var(--brand)) 30%, transparent);
+}
+/* Selos: an icon and a word, in the selo's own color. */
+.profile-selo {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 7px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--selo);
+  background: color-mix(in srgb, var(--selo) 14%, transparent);
+  cursor: default;
+}
+.profile-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--text-normal);
   background: var(--bg-mod-hover);
+  border: 1px solid transparent;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.3s var(--spring);
+}
+.profile-reaction .emoji {
+  width: 16px;
+  height: 16px;
+}
+.profile-reaction span {
+  font-weight: 600;
+  color: var(--header-primary);
+}
+.profile-reaction.mine {
+  border-color: color-mix(in srgb, var(--brand) 60%, transparent);
+  background: color-mix(in srgb, var(--brand) 16%, transparent);
+}
+.profile-reaction:not(:disabled):hover {
+  background: var(--bg-mod-active);
+}
+.profile-reaction:not(:disabled):active {
+  transform: scale(0.94);
+}
+.profile-reaction:disabled {
+  cursor: default;
+}
+.profile-about.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.role-add.labeled {
+  width: auto;
+  gap: 4px;
+  padding: 0 8px 0 6px;
+  font-size: 12px;
+}
+
+/* Imersivo: the GIF fills the whole card under a stronger shade; avatar and name centered. */
+.profile-card[data-style='immersive'] .profile-banner {
+  position: absolute;
+  inset: 0;
+  height: auto;
+}
+.profile-card[data-style='immersive'] .profile-banner-shade {
+  background:
+    linear-gradient(180deg, transparent 0%, rgba(10, 6, 16, 0.3) 50%, rgba(10, 6, 16, 0.7) 100%),
+    rgba(10, 6, 16, var(--shade));
+}
+.profile-card[data-style='immersive'] .profile-avatar {
+  position: relative;
+  top: auto;
+  left: auto;
+  width: fit-content;
+  margin: 28px auto 0;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  --status-ring: #1b1225;
+}
+.profile-card[data-style='immersive'] .profile-body {
+  margin-top: 10px;
+  color: #f4eef8;
+}
+.profile-card[data-style='immersive'] .profile-names {
+  text-align: center;
+}
+.profile-card[data-style='immersive'] .profile-status {
+  justify-content: center;
+}
+.profile-card[data-style='immersive'] .pn-display,
+.profile-card[data-style='immersive'] .pn-user {
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+.profile-card[data-style='immersive'].themed .profile-body,
+.profile-card[data-style='immersive'] .profile-section,
+.profile-card[data-style='immersive'] .profile-call {
+  background: rgba(10, 6, 16, 0.38);
+  backdrop-filter: blur(6px);
+}
+.profile-card[data-style='immersive'] .profile-section {
+  padding: 10px 12px;
+  border-radius: 12px;
+}
+.profile-card[data-style='immersive'].themed .profile-body {
+  background: transparent;
+  backdrop-filter: none;
+  padding: 0;
+}
+
+/* Minimalista: a thin color band, a smaller avatar, name, status, a line and two tags. */
+.profile-card[data-style='minimal'] .profile-banner {
+  height: 44px;
+}
+.profile-card[data-style='minimal'] .profile-avatar {
+  top: 10px;
+}
+.profile-card[data-style='minimal'] .profile-body {
+  margin-top: 36px;
+}
+.profile-card[data-style='minimal'] .profile-roles,
+.profile-card[data-style='minimal'] .profile-mutuals {
+  display: none;
 }
 .profile-mutuals {
   display: flex;
@@ -3965,10 +4144,11 @@ app-profile-card {
   margin-bottom: 12px;
 }
 .profile-section h3 {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--header-primary);
+  color: var(--brand);
   margin-bottom: 6px;
 }
 .profile-section p {
@@ -4769,6 +4949,52 @@ app-profile-card {
   display: grid;
   grid-template-columns: 1fr 300px;
   gap: 24px;
+}
+/* The preview follows you down the long form. */
+.profile-preview {
+  position: sticky;
+  top: 0;
+  align-self: start;
+}
+.pe-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pe-line .input {
+  flex: 1;
+  min-width: 0;
+}
+.pe-line .pe-select {
+  flex: none;
+  width: 140px;
+}
+.pe-emoji {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-input);
+  color: var(--interactive-normal);
+}
+.pe-emoji:hover {
+  color: var(--interactive-hover);
+  background: var(--bg-mod-hover);
+}
+.pe-emoji .emoji {
+  width: 22px;
+  height: 22px;
+}
+.color-swatches.small {
+  align-items: center;
+  margin-top: 10px;
+}
+.color-swatches.small .swatch {
+  border-radius: 50%;
 }
 .mic-test {
   display: flex;
@@ -5833,6 +6059,10 @@ img.emoji.custom {
   .roles-layout,
   .two-col {
     grid-template-columns: 1fr;
+  }
+  /* Stacked under the form, the preview just scrolls with it. */
+  .profile-preview {
+    position: static;
   }
   .mt-joined {
     display: none;

@@ -1,40 +1,39 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Api } from '../core/api';
+import { emojiSrc } from '../core/custom-emoji';
 import { renderMarkdown } from '../core/markdown';
 import { Nav } from '../core/nav';
+import { PROFILE_REACTIONS, SELOS, linkLabel, profileOf, statusLine } from '../core/profile';
 import { Store } from '../core/store';
 import type { User } from '../core/types';
 import { MenuItem, Ui } from '../core/ui';
-import { bannerImage, channelLabel, defaultAvatarColor, elapsedLabel } from '../core/util';
+import { channelLabel, defaultAvatarColor, elapsedLabel, fileUrl } from '../core/util';
 import { Voice } from '../core/voice';
 import { userMenuItems } from './menus';
 import { Avatar, Icon } from './shared';
 import { Tip } from './tooltip';
+
+interface ReactionCount {
+  kind: string;
+  count: number;
+  mine: boolean;
+}
 
 /** Loaded when the card opens (GET /users/:id/profile). */
 interface ProfileExtras {
   mutualFriends: User[];
   mutualGuilds: number[];
   badges: string[];
+  reactions?: ReactionCount[];
 }
-
-interface Badge {
-  icon: string;
-  label: string;
-  color: string;
-}
-
-const BADGES: Record<string, Badge> = {
-  owner: { icon: 'crown', label: 'Dono do servidor', color: '#f0b232' },
-  pioneer: { icon: 'star', label: 'Pioneiro: uma das primeiras 100 contas do Resenha', color: '#5865f2' },
-  botDev: { icon: 'code', label: 'Criador de bot', color: '#23a55a' },
-};
 
 /**
- * A person's profile, like Discord's popout: banner, status bubble, pronouns, badges,
- * friends and servers in common, the call they're in, and dates. The popout and the
- * profile settings preview both draw it; `preview` leaves out what needs the server.
+ * A person's profile: their little corner of the Resenha. Banner (GIF or picture) under a
+ * shade that keeps the text readable, status line, "vibe" tag, Minha resenha, link,
+ * interests, selos and what people say about them; then the call they're in and dates.
+ * Three looks (card, immersive, minimal); sections with nothing in them don't show.
+ * The popout and the profile settings preview both draw it; `preview` drops the buttons.
  * The popout puts roles and the message box at the end (ng-content).
  */
 @Component({
@@ -42,24 +41,31 @@ const BADGES: Record<string, Badge> = {
   imports: [Avatar, Icon, Tip],
   template: `
     @let u = user();
+    @let p = prof();
+    @let minimal = p.style === 'minimal';
     <div
       class="profile-card"
+      [attr.data-style]="p.style"
       [class.themed]="!!theme()"
-      [class.banner-image]="!!u.banner"
+      [class.banner-image]="!!u.banner && !minimal"
       [style.--profile-1]="theme()?.[0]"
       [style.--profile-2]="theme()?.[1]"
+      [style.--shade]="shade()"
     >
-      <div
-        class="profile-banner"
-        [class.has-image]="!!u.banner"
-        [style.background-color]="u.bannerColor || theme()?.[0] || fallbackColor()"
-        [style.background-image]="banner(u)"
-      ></div>
+      <div class="profile-banner" [class.has-image]="!!u.banner && !minimal" [style.background-color]="u.bannerColor || theme()?.[0] || fallbackColor()">
+        @if (u.banner && !minimal) {
+          <img class="profile-banner-img" [src]="bannerSrc(u.banner)" alt="" draggable="false" (load)="measure($event)" />
+          <div class="profile-banner-shade"></div>
+        }
+      </div>
       @if (!preview()) {
         <div class="profile-actions">
           @if (isMe()) {
             <button class="profile-action" appTip="Editar perfil" (click)="editProfile()"><app-icon name="edit" [size]="18" /></button>
           } @else if (!u.bot) {
+            @if (canReact()) {
+              <button class="profile-action" appTip="Reagir ao perfil" (click)="reactMenu($event)"><app-icon name="addReaction" [size]="18" /></button>
+            }
             @if (canAddFriend()) {
               <button class="profile-action" appTip="Adicionar amigo" (click)="addFriend()"><app-icon name="personAdd" [size]="18" /></button>
             }
@@ -68,11 +74,8 @@ const BADGES: Record<string, Badge> = {
         </div>
       }
       <div class="profile-avatar">
-        <app-avatar [user]="u" [size]="80" [status]="store.statusOf(u.id)" />
+        <app-avatar [user]="u" [size]="minimal ? 64 : 80" [status]="store.statusOf(u.id)" />
       </div>
-      @if (u.customStatus) {
-        <div class="profile-bubble"><span>{{ u.customStatus }}</span></div>
-      }
       <div class="profile-body">
         <div class="profile-names">
           <div class="pn-display">
@@ -87,15 +90,26 @@ const BADGES: Record<string, Badge> = {
               <span class="pn-dot">•</span>{{ u.pronouns }}
             }
           </div>
+          @if (status(); as s) {
+            <div class="profile-status" [style.--status-color]="s.color">
+              @if (s.emoji) {
+                <img class="emoji" [src]="emoji(s.emoji)" alt="" />
+              } @else {
+                <i class="ps-dot"></i>
+              }
+              <span>{{ s.text }}</span>
+            </div>
+          }
+          @if (p.vibe; as v) {
+            <span class="profile-vibe" [style.--vibe]="v.color">
+              @if (v.emoji) {
+                <img class="emoji" [src]="emoji(v.emoji)" alt="" />
+              }
+              <b>{{ v.label }}:</b> {{ v.text }}
+            </span>
+          }
         </div>
-        @if (badges().length) {
-          <div class="profile-badges">
-            @for (b of badges(); track b.icon) {
-              <span class="profile-badge" [style.color]="b.color" [appTip]="b.label"><app-icon [name]="b.icon" [size]="16" /></span>
-            }
-          </div>
-        }
-        @if (mutualText(); as text) {
+        @if (!minimal && mutualText(); as text) {
           <button class="profile-mutuals" (click)="mutualsMenu($event)">
             @if (extras()?.mutualFriends?.length) {
               <span class="mutual-avatars">
@@ -109,11 +123,58 @@ const BADGES: Record<string, Badge> = {
         }
         @if (u.about) {
           <div class="profile-section">
-            <h3>Sobre mim</h3>
-            <p class="profile-about" [innerHTML]="aboutHtml()"></p>
+            @if (!minimal) {
+              <h3>Minha resenha</h3>
+            }
+            <p class="profile-about" [class.clamp]="minimal" [innerHTML]="aboutHtml()"></p>
           </div>
         }
-        @if (store.activityOf(u.id); as a) {
+        @if (!minimal && p.link) {
+          <a class="profile-link" [href]="p.link" target="_blank" rel="noopener noreferrer nofollow">
+            <app-icon name="link" [size]="16" /><span>{{ linkText() }}</span>
+          </a>
+        }
+        @if (interests().length) {
+          <div class="profile-section">
+            @if (!minimal) {
+              <h3>Interesses</h3>
+            }
+            <div class="profile-tags">
+              @for (t of interests(); track t) {
+                <span class="profile-tag">{{ t }}</span>
+              }
+            </div>
+          </div>
+        }
+        @if (!minimal && selos().length) {
+          <div class="profile-section">
+            <h3>Selos</h3>
+            <div class="profile-selos">
+              @for (s of selos(); track s.label) {
+                <span class="profile-selo" [style.--selo]="s.color" [appTip]="s.hint"><app-icon [name]="s.icon" [size]="14" />{{ s.label }}</span>
+              }
+            </div>
+          </div>
+        }
+        @if (!minimal && reactions().length && (p.privacy.reactions || isMe())) {
+          <div class="profile-section">
+            <h3>A galera diz</h3>
+            <div class="profile-reactions">
+              @for (r of reactions(); track r.kind) {
+                <button
+                  class="profile-reaction"
+                  [class.mine]="r.mine"
+                  [disabled]="!canReact() && !r.mine"
+                  [appTip]="r.mine ? 'Tirar a sua reação' : canReact() ? 'Reagir também' : r.label"
+                  (click)="toggleReaction(r.kind, !r.mine)"
+                >
+                  <img class="emoji" [src]="emoji(r.emoji)" alt="" />{{ r.label }}<span>{{ r.count }}</span>
+                </button>
+              }
+            </div>
+          </div>
+        }
+        @if (!minimal && store.activityOf(u.id); as a) {
           <div class="profile-call profile-activity">
             <div class="pc-head">Jogando</div>
             <div class="pc-body">
@@ -125,7 +186,7 @@ const BADGES: Record<string, Badge> = {
             </div>
           </div>
         }
-        @if (!compact() && call(); as c) {
+        @if (!compact() && !minimal && call(); as c) {
           <div class="profile-call">
             <div class="pc-head">{{ c.streaming ? 'Ao vivo' : 'Em voz' }}</div>
             <div class="pc-body">
@@ -164,7 +225,7 @@ const BADGES: Record<string, Badge> = {
             }
           </div>
         }
-        @if (!compact()) {
+        @if (!compact() && !minimal && p.privacy.joined) {
           <div class="profile-section">
             <h3>Membro desde</h3>
             <div class="profile-dates">
@@ -189,7 +250,7 @@ const BADGES: Record<string, Badge> = {
 export class ProfileCard {
   readonly user = input.required<User>();
   readonly guildId = input<number | null>(null);
-  /** The settings preview: no server data, no buttons. */
+  /** The settings preview: no buttons (it still loads your own selos and reactions). */
   readonly preview = input(false);
   /** Opened from the call list: leaves out the call card and "Membro desde". */
   readonly compact = input(false);
@@ -202,9 +263,25 @@ export class ProfileCard {
   private nav = inject(Nav);
   private sanitizer = inject(DomSanitizer);
 
-  readonly banner = bannerImage;
   readonly extras = signal<ProfileExtras | null>(null);
-  /** "Sobre mim" with the chat's formatting: clickable links, **bold**, emojis, mentions. */
+  readonly prof = computed(() => profileOf(this.user()));
+  readonly status = computed(() => statusLine(this.user()));
+  readonly linkText = computed(() => linkLabel(this.prof().link ?? ''));
+  /** The minimal look shows just two tags. */
+  readonly interests = computed(() => {
+    const p = this.prof();
+    return p.style === 'minimal' ? p.interests.slice(0, 2) : p.interests;
+  });
+  /** Banner brightness (0–1) measured when it loads; drives the automatic shade. */
+  private brightness = signal<number | null>(null);
+  /** How dark the shade over the banner is: the person's choice, or more for bright pictures. */
+  readonly shade = computed(() => {
+    const p = this.prof();
+    const base = p.overlay != null ? p.overlay / 100 : 0.15 + (this.brightness() ?? 0.5) * 0.45;
+    // The immersive look puts the name on the picture: never too light there.
+    return String(p.style === 'immersive' ? Math.max(base, 0.3) : base);
+  });
+  /** "Minha resenha" with the chat's formatting: clickable links, **bold**, emojis, mentions. */
   readonly aboutHtml = computed<SafeHtml>(() => {
     const gid = this.guildId();
     const html = renderMarkdown(this.user().about, {
@@ -223,13 +300,62 @@ export class ProfileCard {
     return gid != null ? (this.store.member(gid, this.user().id)?.joinedAt ?? null) : null;
   });
 
-  readonly badges = computed<Badge[]>(() => {
-    const out: Badge[] = [];
+  /** Selos, each with its word: the server's founder, then what the server says they earned. */
+  readonly selos = computed(() => {
     const gid = this.guildId();
-    if (gid != null && this.store.isOwner(gid, this.user().id)) out.push(BADGES['owner']);
-    for (const b of this.extras()?.badges ?? []) if (BADGES[b]) out.push(BADGES[b]);
-    return out;
+    const keys = [...(gid != null && this.store.isOwner(gid, this.user().id) ? ['owner'] : []), ...(this.extras()?.badges ?? [])];
+    return keys.filter((k) => SELOS[k]).map((k) => SELOS[k]);
   });
+
+  /** Only the kinds they received, with labels. */
+  readonly reactions = computed(() =>
+    (this.extras()?.reactions ?? []).map((r) => ({ ...r, ...PROFILE_REACTIONS.find((x) => x.kind === r.kind)! })).filter((r) => r.label),
+  );
+  readonly canReact = computed(() => !this.preview() && !this.isMe() && !this.user().bot && this.prof().privacy.reactions);
+
+  emoji(e: string) {
+    return emojiSrc(e);
+  }
+
+  bannerSrc(key: string) {
+    return fileUrl(key, 'banner');
+  }
+
+  /** Average brightness of the banner's first frame, on a tiny canvas (same-origin files). */
+  measure(e: Event) {
+    try {
+      const img = e.target as HTMLImageElement;
+      const c = document.createElement('canvas');
+      c.width = c.height = 8;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      if (!g) return;
+      g.drawImage(img, 0, 0, 8, 8);
+      const d = g.getImageData(0, 0, 8, 8).data;
+      let sum = 0;
+      for (let i = 0; i < d.length; i += 4) sum += (0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]) / 255;
+      this.brightness.set(sum / (d.length / 4));
+    } catch {
+      // can't read the picture: the middle shade is fine
+    }
+  }
+
+  reactMenu(e: MouseEvent) {
+    e.stopPropagation();
+    const keep = this.ui.profile();
+    const given = new Set(this.reactions().filter((r) => r.mine).map((r) => r.kind));
+    this.ui.openMenuAt(
+      e.currentTarget as Element,
+      PROFILE_REACTIONS.map((r) => ({ label: `${r.emoji}  ${r.label}`, checked: given.has(r.kind), action: () => this.toggleReaction(r.kind, !given.has(r.kind)) })),
+      'below',
+    );
+    this.ui.profile.set(keep);
+  }
+
+  toggleReaction(kind: string, on: boolean) {
+    const id = this.user().id;
+    const req = on ? this.api.put<{ reactions: ReactionCount[] }>(`/users/${id}/reactions/${kind}`, {}) : this.api.delete<{ reactions: ReactionCount[] }>(`/users/${id}/reactions/${kind}`);
+    req.then((r) => this.extras.update((x) => (x ? { ...x, reactions: r.reactions } : x))).catch((err) => this.ui.error(err));
+  }
 
   readonly mutualText = computed(() => {
     const x = this.extras();
@@ -265,7 +391,6 @@ export class ProfileCard {
   constructor() {
     effect((onCleanup) => {
       const id = this.user().id;
-      if (this.preview()) return;
       let alive = true;
       onCleanup(() => (alive = false));
       this.extras.set(null);

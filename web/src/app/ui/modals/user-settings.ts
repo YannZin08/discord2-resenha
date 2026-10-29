@@ -8,7 +8,10 @@ import { Ui } from '../../core/ui';
 import { Voice } from '../../core/voice';
 import { avatarUrl, bannerImage, defaultAvatarColor, elapsedLabel } from '../../core/util';
 import { detectorScript } from '../../core/game-detector';
-import { parseCustom } from '../../core/custom-emoji';
+import { emojiSrc, parseCustom } from '../../core/custom-emoji';
+import { DEFAULT_PROFILE, INTEREST_SUGGESTIONS, MAX_INTERESTS, STATUS_MODES, VIBE_LABELS, linkPreview, profileOf } from '../../core/profile';
+import type { Profile, ProfileStyle, VibeLabel } from '../../core/types';
+import { Tip } from '../tooltip';
 import { EmojiManager } from '../emoji-manager';
 import { SoundManager } from '../sound-manager';
 import { customByName, toEditable, toWire } from '../message';
@@ -30,7 +33,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
 
 @Component({
   selector: 'app-user-settings',
-  imports: [FormsModule, Icon, Avatar, StreamOptions, VoiceSettings, ProfileCard, EmojiManager, SoundManager],
+  imports: [FormsModule, Icon, Avatar, StreamOptions, VoiceSettings, ProfileCard, EmojiManager, SoundManager, Tip],
   template: `
     @if (store.me(); as me) {
       <div class="settings-layer" [class.show-content]="contentOpen()">
@@ -153,10 +156,106 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                       }
                     </div>
                     <div class="settings-divider"></div>
+                    <label class="field-label">Escurecer o fundo</label>
+                    <p class="hint">Uma camada escura sobre o banner deixa o nome e o texto legíveis. No automático, ela escurece mais em imagens claras.</p>
+                    <label class="toggle-row compact">
+                      <div class="toggle-title">Automático</div>
+                      <input type="checkbox" class="switch" [checked]="draft().overlay == null" (change)="setDraft({ overlay: $any($event.target).checked ? null : 40 })" />
+                    </label>
+                    @if (draft().overlay != null) {
+                      <div class="vol-row">
+                        <input type="range" min="0" max="90" step="5" [value]="draft().overlay" (input)="setDraft({ overlay: +$any($event.target).value })" />
+                        <span>{{ draft().overlay }}%</span>
+                      </div>
+                    }
+                    <div class="settings-divider"></div>
+                    <label class="field-label">Estilo do card</label>
+                    <div class="pill-group">
+                      @for (s of styles; track s.id) {
+                        <button class="pill wide" [class.active]="draft().style === s.id" (click)="setDraft({ style: s.id })">
+                          <strong>{{ s.label }}</strong><span>{{ s.hint }}</span>
+                        </button>
+                      }
+                    </div>
+                    <div class="settings-divider"></div>
+                    <label class="field-label">Nome de exibição</label>
+                    <input class="input" maxlength="32" [ngModel]="displayName()" (ngModelChange)="displayName.set($event)" />
                     <label class="field-label">Pronomes</label>
                     <input class="input" maxlength="40" [ngModel]="pronouns()" (ngModelChange)="pronouns.set($event)" placeholder="Ex.: ele/dele, ela/dela" />
                     <div class="settings-divider"></div>
-                    <label class="field-label">Sobre mim</label>
+                    <label class="field-label">Status</label>
+                    <p class="hint">Aparece embaixo do seu nome, como "🎮 Jogando · Valorant".</p>
+                    <div class="chip-row">
+                      @for (s of statusModes; track s.id) {
+                        <button class="chip" [class.active]="draft().status.mode === s.id" (click)="setStatus({ mode: draft().status.mode === s.id ? null : s.id })">
+                          {{ s.emoji }} {{ s.label }}
+                        </button>
+                      }
+                    </div>
+                    <div class="pe-line">
+                      <button type="button" class="pe-emoji" appTip="Emoji do status" (click)="pickEmoji($event, 'status')">
+                        @if (draft().status.emoji; as e) {
+                          <img class="emoji" [src]="emoji(e)" alt="" />
+                        } @else {
+                          <app-icon name="smile" [size]="20" />
+                        }
+                      </button>
+                      <input class="input" maxlength="128" [ngModel]="statusText()" (ngModelChange)="statusText.set($event)" placeholder="Frase curta, ex.: Valorant, de boa, estudando" />
+                    </div>
+                    <div class="color-swatches small">
+                      @for (c of accentColors; track c) {
+                        <button class="swatch" [style.background]="c" [class.active]="draft().status.color === c" (click)="setStatus({ color: c })"></button>
+                      }
+                      @if (draft().status.color || draft().status.emoji) {
+                        <button class="btn btn-link" (click)="setStatus({ color: null, emoji: null })">Tirar cor e emoji</button>
+                      }
+                    </div>
+                    <div class="settings-divider"></div>
+                    <label class="field-label">Etiqueta pessoal</label>
+                    <p class="hint">Uma frase curta só sua, como "Vibe: Caótico". Não é um cargo e some quando fica vazia.</p>
+                    <div class="pe-line">
+                      <select class="input pe-select" [ngModel]="vibeLabel()" (ngModelChange)="vibeLabel.set($event)">
+                        @for (l of vibeLabels; track l) {
+                          <option [value]="l">{{ l }}</option>
+                        }
+                      </select>
+                      <button type="button" class="pe-emoji" appTip="Emoji da etiqueta" (click)="pickEmoji($event, 'vibe')">
+                        @if (vibeEmoji(); as e) {
+                          <img class="emoji" [src]="emoji(e)" alt="" />
+                        } @else {
+                          <app-icon name="smile" [size]="20" />
+                        }
+                      </button>
+                      <input class="input" maxlength="24" [ngModel]="vibeText()" (ngModelChange)="vibeText.set($event)" placeholder="Ex.: Caótico, Corinthiano" />
+                    </div>
+                    <div class="color-swatches small">
+                      @for (c of accentColors; track c) {
+                        <button class="swatch" [style.background]="c" [class.active]="vibeColor() === c" (click)="vibeColor.set(c)"></button>
+                      }
+                    </div>
+                    <div class="settings-divider"></div>
+                    <label class="field-label">Interesses ({{ draft().interests.length }}/{{ maxInterests }})</label>
+                    <div class="chip-row">
+                      @for (t of interestChoices(); track t) {
+                        <button class="chip" [class.active]="hasInterest(t)" (click)="toggleInterest(t)">{{ t }}</button>
+                      }
+                    </div>
+                    <div class="pe-line">
+                      <input
+                        class="input"
+                        maxlength="20"
+                        [(ngModel)]="interestDraft"
+                        (keydown.enter)="addInterest()"
+                        placeholder="Outro interesse"
+                        [disabled]="draft().interests.length >= maxInterests"
+                      />
+                      <button class="btn btn-secondary" [disabled]="!interestDraft.trim() || draft().interests.length >= maxInterests" (click)="addInterest()">Adicionar</button>
+                    </div>
+                    <div class="settings-divider"></div>
+                    <label class="field-label">Link</label>
+                    <input class="input" maxlength="200" [ngModel]="linkDraft()" (ngModelChange)="linkDraft.set($event)" placeholder="instagram.com/seu_perfil" />
+                    <div class="settings-divider"></div>
+                    <label class="field-label">Minha resenha</label>
                     <div class="about-field">
                       <textarea
                         #aboutBox
@@ -173,12 +272,20 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                     </div>
                     <p class="hint">Dá para usar emojis: os normais, os seus e os dos seus servidores. Digite <code>:nome:</code> ou use o botão.</p>
                     <div class="hint right">{{ 190 - about().length }}</div>
+                    <div class="settings-divider"></div>
+                    <label class="field-label">Privacidade</label>
+                    @for (o of privacyOptions; track o.key) {
+                      <label class="toggle-row compact">
+                        <div class="toggle-title">{{ o.label }}</div>
+                        <input type="checkbox" class="switch" [checked]="draft().privacy[o.key]" (change)="setPrivacy(o.key, $any($event.target).checked)" />
+                      </label>
+                    }
                     <div class="settings-actions">
-                      <button class="btn btn-success" (click)="saveAbout()">Salvar alterações</button>
+                      <button class="btn btn-success" [disabled]="saving()" (click)="saveAbout()">{{ saving() ? 'Salvando...' : 'Salvar alterações' }}</button>
                     </div>
                   </div>
                   <div class="profile-preview">
-                    <label class="field-label">Prévia</label>
+                    <label class="field-label">Prévia: como os outros veem</label>
                     <app-profile-card class="profile-preview-card" [user]="previewUser()!" [preview]="true" />
                   </div>
                 </div>
@@ -428,12 +535,66 @@ export class UserSettings {
   /** "Sobre mim" as typed: custom emojis read as :nome: until saved. */
   readonly about = signal(toEditable(this.store.me()?.about ?? '', this.store));
   readonly pronouns = signal(this.store.me()?.pronouns ?? '');
+  readonly displayName = signal(this.store.me()?.displayName ?? '');
+  readonly statusText = signal(this.store.me()?.customStatus ?? '');
+  /** Status details, interests, style, privacy: edited here, saved with "Salvar alterações". */
+  readonly draft = signal<Profile>(profileOf(this.store.me()));
+  readonly vibeLabel = signal<VibeLabel>(this.draft().vibe?.label ?? 'Vibe');
+  readonly vibeText = signal(this.draft().vibe?.text ?? '');
+  readonly vibeEmoji = signal<string | null>(this.draft().vibe?.emoji ?? null);
+  readonly vibeColor = signal<string | null>(this.draft().vibe?.color ?? null);
+  readonly linkDraft = signal(this.draft().link ?? '');
+  readonly saving = signal(false);
+  interestDraft = '';
+  readonly statusModes = STATUS_MODES;
+  readonly vibeLabels = VIBE_LABELS;
+  readonly maxInterests = MAX_INTERESTS;
+  readonly accentColors = ['#ffb547', '#5ed69a', '#ff6b81', '#8b9cff', '#4fc3f7', '#eb459f', '#c9bad6'];
+  readonly styles: { id: ProfileStyle; label: string; hint: string }[] = [
+    { id: 'card', label: 'Cartão', hint: 'o padrão' },
+    { id: 'immersive', label: 'Imersivo', hint: 'o fundo no card todo' },
+    { id: 'minimal', label: 'Minimalista', hint: 'só o essencial' },
+  ];
+  readonly privacyOptions: { key: keyof Profile['privacy']; label: string }[] = [
+    { key: 'status', label: 'Mostrar meu status personalizado' },
+    { key: 'interests', label: 'Mostrar meus interesses' },
+    { key: 'links', label: 'Mostrar meu link' },
+    { key: 'joined', label: 'Mostrar a data em que entrei' },
+    { key: 'reactions', label: 'Permitir que reajam ao meu perfil' },
+  ];
+  /** Suggestions plus anything typed, so a custom one can be switched off too. */
+  readonly interestChoices = computed(() => [...new Set([...INTEREST_SUGGESTIONS, ...this.draft().interests])]);
   /** Profile theme being picked: shown live in the preview, saved when the picker closes. */
   readonly themeDraft = linkedSignal(() => this.store.me()?.themeColors ?? null);
-  /** The preview shows what's typed before it's saved. */
+  /** What's being edited, as a profile. */
+  private draftProfile = computed<Profile>(() => {
+    const text = this.vibeText().trim();
+    return {
+      ...this.draft(),
+      vibe: text ? { label: this.vibeLabel(), text, emoji: this.vibeEmoji(), color: this.vibeColor() } : null,
+      link: this.linkDraft().trim() ? linkPreview(this.linkDraft().trim()) : null,
+    };
+  });
+  /** The preview shows what's typed before it's saved, the way others will see it (privacy applied). */
   readonly previewUser = computed(() => {
     const me = this.store.me();
-    return me ? { ...me, about: toWire(this.about(), this.store, null), pronouns: this.pronouns(), themeColors: this.themeDraft() } : null;
+    if (!me) return null;
+    const p = this.draftProfile();
+    const shown: Profile = {
+      ...p,
+      status: p.privacy.status ? p.status : DEFAULT_PROFILE.status,
+      interests: p.privacy.interests ? p.interests : [],
+      link: p.privacy.links ? p.link : null,
+    };
+    return {
+      ...me,
+      displayName: this.displayName().trim() || me.displayName,
+      about: toWire(this.about(), this.store, null),
+      pronouns: this.pronouns(),
+      customStatus: p.privacy.status ? this.statusText().trim() : '',
+      themeColors: this.themeDraft(),
+      profile: shown,
+    };
   });
   pwCurrent = '';
   pwNext = '';
@@ -547,10 +708,64 @@ export class UserSettings {
     );
   }
 
-  saveAbout() {
-    this.patch({ about: toWire(this.about(), this.store, null), pronouns: this.pronouns().trim() })
-      .then(() => this.ui.toast('Perfil salvo.', 'success'))
-      .catch((e) => this.ui.error(e));
+  async saveAbout() {
+    const p = this.draftProfile();
+    this.saving.set(true);
+    try {
+      await this.patch({
+        displayName: this.displayName().trim() || this.store.me()!.displayName,
+        about: toWire(this.about(), this.store, null),
+        pronouns: this.pronouns().trim(),
+        customStatus: this.statusText().trim(),
+        profile: { status: p.status, vibe: p.vibe, interests: p.interests, link: this.linkDraft().trim() || null, style: p.style, overlay: p.overlay, privacy: p.privacy },
+      });
+      this.ui.toast('Perfil salvo.', 'success');
+    } catch (e) {
+      this.ui.error(e);
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  setDraft(patch: Partial<Profile>) {
+    this.draft.update((d) => ({ ...d, ...patch }));
+  }
+
+  setStatus(patch: Partial<Profile['status']>) {
+    this.draft.update((d) => ({ ...d, status: { ...d.status, ...patch } }));
+  }
+
+  setPrivacy(key: keyof Profile['privacy'], on: boolean) {
+    this.draft.update((d) => ({ ...d, privacy: { ...d.privacy, [key]: on } }));
+  }
+
+  hasInterest(t: string) {
+    return this.draft().interests.some((x) => x.toLowerCase() === t.toLowerCase());
+  }
+
+  toggleInterest(t: string) {
+    const list = this.draft().interests;
+    if (this.hasInterest(t)) return this.setDraft({ interests: list.filter((x) => x.toLowerCase() !== t.toLowerCase()) });
+    if (list.length >= MAX_INTERESTS) return this.ui.toast(`Escolha no máximo ${MAX_INTERESTS} interesses.`, 'info');
+    this.setDraft({ interests: [...list, t] });
+  }
+
+  addInterest() {
+    const t = this.interestDraft.replace(/\s+/g, ' ').trim().slice(0, 20);
+    if (!t) return;
+    if (!this.hasInterest(t)) this.toggleInterest(t);
+    this.interestDraft = '';
+  }
+
+  emoji(e: string) {
+    return emojiSrc(e);
+  }
+
+  pickEmoji(e: MouseEvent, target: 'status' | 'vibe') {
+    this.ui.openPicker(e.currentTarget as Element, (picked) => {
+      if (target === 'status') this.setStatus({ emoji: picked });
+      else this.vibeEmoji.set(picked);
+    });
   }
 
   setActivity(name: string | null) {

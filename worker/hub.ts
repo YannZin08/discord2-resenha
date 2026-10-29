@@ -3,6 +3,7 @@ import type { Env } from './index';
 import { HELP, MAX_PLAYLIST, formatTime, isMix, parseCommand, playerError, playlistId, resolvePlaylist, resolveTrack, youtubeId, type MusicState, type Track } from './music';
 import { unfurl, type Embed } from './unfurl';
 import NOX_PICTURE from '../web/public/nox.png';
+import { BOA_RESENHA_SELO, PROFILE_REACTIONS, mergeProfile, publicProfile, readProfile, type ProfileReaction } from './profile';
 import {
   HttpError,
   color,
@@ -138,6 +139,10 @@ CREATE TABLE IF NOT EXISTS sounds (
   volume INTEGER NOT NULL DEFAULT 100, user_id INTEGER NOT NULL, created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS sounds_guild ON sounds(guild_id);
+CREATE TABLE IF NOT EXISTS profile_reactions (
+  target_id INTEGER NOT NULL, user_id INTEGER NOT NULL, kind TEXT NOT NULL, created_at INTEGER NOT NULL,
+  PRIMARY KEY (target_id, user_id, kind)
+);
 `;
 
 // Columns added after the first release; ALTER fails harmlessly once they exist.
@@ -150,6 +155,7 @@ const MIGRATIONS = [
   'ALTER TABLE users ADD COLUMN activity TEXT',
   'ALTER TABLE users ADD COLUMN activity_token TEXT',
   'ALTER TABLE guilds ADD COLUMN music_channel_id INTEGER',
+  'ALTER TABLE users ADD COLUMN profile TEXT',
 ];
 
 /** How long a game the detector reported stays up without a new report. */
@@ -294,6 +300,12 @@ export class Hub extends DurableObject<Env> {
     r('PUT', '/api/users/@me/activity', (c) => this.setActivity(c), false, true);
     r('POST', '/api/users/@me/activity-token', (c) => this.newActivityToken(c));
     r('GET', '/api/users/:userId/profile', (c) => this.userProfile(c));
+    r('PUT', '/api/users/:userId/reactions/:kind', async (c) => {
+      // The PUT carries an empty body; read it so the runtime doesn't complain it was left unread.
+      await c.req.arrayBuffer().catch(() => undefined);
+      return this.reactToProfile(c, true);
+    });
+    r('DELETE', '/api/users/:userId/reactions/:kind', (c) => this.reactToProfile(c, false));
     r('POST', '/api/upload', (c) => this.upload(c));
     // File keys are random 128-bit ids, so links work like Discord's CDN links.
     for (const m of ['GET', 'HEAD']) {
@@ -452,7 +464,9 @@ export class Hub extends DurableObject<Env> {
 
   // ---------------------------------------------------------------- serializers
 
-  private pub(u: Row) {
+  /** A user as others see them; `full` (their own sessions) keeps what privacy hides from others. */
+  private pub(u: Row, full = false) {
+    const profile = readProfile(u.profile);
     return {
       id: u.id as number,
       username: u.username as string,
@@ -463,7 +477,8 @@ export class Hub extends DurableObject<Env> {
       pronouns: (u.pronouns as string | null) ?? '',
       themeColors: u.theme_colors ? (JSON.parse(u.theme_colors as string) as [string, string]) : null,
       about: u.about as string,
-      customStatus: u.custom_status as string,
+      customStatus: full || profile.privacy.status ? (u.custom_status as string) : '',
+      profile: full ? profile : publicProfile(profile),
       activity: u.activity ? (JSON.parse(u.activity as string) as Activity) : null,
       createdAt: u.created_at as number,
       bot: !!u.bot,
@@ -473,7 +488,7 @@ export class Hub extends DurableObject<Env> {
   private selfUser(uid: number) {
     const u = this.one('SELECT * FROM users WHERE id = ?', uid);
     if (!u) throw new HttpError(401, 'Sessão inválida.');
-    return { ...this.pub(u), status: u.status as string };
+    return { ...this.pub(u, true), status: u.status as string };
   }
 
   private usersByIds(ids: Iterable<number>): Row[] {
@@ -1110,9 +1125,9 @@ export class Hub extends DurableObject<Env> {
     if (b.bannerColor !== undefined) next.banner_color = color(b.bannerColor);
     if (b.about !== undefined) {
       // Custom emojis count as their :nome:, so the hidden id doesn't eat the 190 characters.
-      next.about = str(b.about, 'Sobre mim', 0, 2000);
+      next.about = str(b.about, 'Minha resenha', 0, 2000);
       if (next.about.replace(/<a?:([A-Za-z0-9_]{2,32}):\d{1,20}>/g, ':$1:').length > 190) {
-        throw new HttpError(400, 'Sobre mim pode ter no máximo 190 caracteres.');
+        throw new HttpError(400, 'Minha resenha pode ter no máximo 190 caracteres.');
       }
     }
     if (b.pronouns !== undefined) next.pronouns = str(b.pronouns, 'Pronomes', 0, 40);
@@ -1129,8 +1144,9 @@ export class Hub extends DurableObject<Env> {
       if (!['online', 'idle', 'dnd', 'invisible'].includes(b.status)) throw new HttpError(400, 'Status inválido.');
       next.status = b.status;
     }
+    if (b.profile !== undefined) next.profile = JSON.stringify(mergeProfile(readProfile(u.profile), b.profile));
     this.run(
-      'UPDATE users SET username = ?, display_name = ?, avatar = ?, banner = ?, banner_color = ?, about = ?, pronouns = ?, theme_colors = ?, custom_status = ?, status = ? WHERE id = ?',
+      'UPDATE users SET username = ?, display_name = ?, avatar = ?, banner = ?, banner_color = ?, about = ?, pronouns = ?, theme_colors = ?, custom_status = ?, status = ?, profile = ? WHERE id = ?',
       next.username,
       next.display_name,
       next.avatar,
@@ -1141,6 +1157,7 @@ export class Hub extends DurableObject<Env> {
       next.theme_colors ?? null,
       next.custom_status,
       next.status,
+      next.profile ?? null,
       c.uid,
     );
     this.releaseFiles([u.avatar !== next.avatar ? u.avatar : null, u.banner !== next.banner ? u.banner : null]);
@@ -1176,13 +1193,49 @@ export class Hub extends DurableObject<Env> {
         : this.all('SELECT m1.guild_id AS id FROM members m1 JOIN members m2 ON m1.guild_id = m2.guild_id WHERE m1.user_id = ? AND m2.user_id = ?', c.uid, id).map(
             (r) => r.id as number,
           );
+    // Blocked reactions are hidden from others too (the owner still sees what they got).
+    const reactions = id === c.uid || readProfile(u.profile).privacy.reactions ? this.profileReactions(id, c.uid) : [];
     const badges: string[] = [];
     if (!u.bot) {
       const earlier = Number(this.one('SELECT COUNT(*) AS n FROM users WHERE bot = 0 AND (created_at < ? OR (created_at = ? AND id < ?))', u.created_at, u.created_at, id)?.n ?? 0);
       if (earlier < PIONEER_ACCOUNTS) badges.push('pioneer');
+      if (Date.now() - u.created_at >= 365 * 86_400_000) badges.push('veteran');
       if (this.one('SELECT 1 FROM users WHERE bot_owner = ?', id)) badges.push('botDev');
+      const boa = Number(this.one("SELECT COUNT(*) AS n FROM profile_reactions WHERE target_id = ? AND kind = 'boa_resenha'", id)?.n ?? 0);
+      if (boa >= BOA_RESENHA_SELO) badges.push('boaResenha');
     }
-    return { mutualFriends, mutualGuilds, badges };
+    return { mutualFriends, mutualGuilds, badges, reactions };
+  }
+
+  /** Reactions someone received, only the kinds they got (plus the ones I gave, so I can take them back). */
+  private profileReactions(target: number, viewer: number) {
+    const counts = new Map<string, number>();
+    for (const r of this.all('SELECT kind, COUNT(*) AS n FROM profile_reactions WHERE target_id = ? GROUP BY kind', target)) counts.set(r.kind, r.n);
+    const mine = new Set(this.all('SELECT kind FROM profile_reactions WHERE target_id = ? AND user_id = ?', target, viewer).map((r) => r.kind as string));
+    return PROFILE_REACTIONS.filter((k) => counts.has(k)).map((kind) => ({ kind, count: counts.get(kind)!, mine: mine.has(kind) }));
+  }
+
+  /** Reaction toggles per person in the last minute (an easy click-spam stop). */
+  private reactionTaps = new Map<number, number[]>();
+
+  /** PUT gives a reaction to someone's profile, DELETE takes it back; once per kind per person. */
+  private reactToProfile(c: Ctx, on: boolean) {
+    const target = toId(c.params.userId);
+    const kind = c.params.kind as ProfileReaction;
+    if (!PROFILE_REACTIONS.includes(kind)) throw new HttpError(400, 'Reação inválida.');
+    if (target === c.uid) throw new HttpError(400, 'Você não pode reagir ao seu próprio perfil.');
+    const u = this.one('SELECT bot, profile FROM users WHERE id = ?', target);
+    if (!u || !this.relatedUserIds(c.uid).includes(target)) throw new HttpError(404, 'Usuário não encontrado.');
+    if (u.bot) throw new HttpError(400, 'Bots não recebem reações.');
+    if (on && !readProfile(u.profile).privacy.reactions) throw new HttpError(403, 'Essa pessoa não aceita reações no perfil.');
+    const now = Date.now();
+    const taps = (this.reactionTaps.get(c.uid) ?? []).filter((t) => now - t < 60_000);
+    if (taps.length >= 20) throw new HttpError(429, 'Calma! Espere um pouco antes de reagir de novo.');
+    taps.push(now);
+    this.reactionTaps.set(c.uid, taps);
+    if (on) this.run('INSERT OR IGNORE INTO profile_reactions (target_id, user_id, kind, created_at) VALUES (?, ?, ?, ?)', target, c.uid, kind, now);
+    else this.run('DELETE FROM profile_reactions WHERE target_id = ? AND user_id = ? AND kind = ?', target, c.uid, kind);
+    return { reactions: this.profileReactions(target, c.uid) };
   }
 
   private async changePassword(c: Ctx) {
