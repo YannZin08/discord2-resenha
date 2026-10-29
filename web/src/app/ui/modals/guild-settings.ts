@@ -88,7 +88,7 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
                     <option [ngValue]="c.id">#{{ c.name }}</option>
                   }
                 </select>
-                <p class="hint">Os comandos do bot de música (/tocar, /pular, /fila…) só funcionam neste canal.</p>
+                <p class="hint">Os comandos do Nox, o bot de música (/tocar, /pular, /fila…), só funcionam neste canal.</p>
                 <div class="settings-actions">
                   <button class="btn btn-success" [disabled]="busy()" (click)="saveOverview()">Salvar alterações</button>
                 </div>
@@ -148,11 +148,11 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
               }
               @case ('bots') {
                 <h2>Bots</h2>
-                <p class="hint">Bots são membros automáticos do servidor. Use o bot de música pronto ou crie os seus.</p>
+                <p class="hint">Bots são membros automáticos do servidor. Use o Nox, o bot de música pronto, ou crie os seus.</p>
                 <div class="bot-card">
-                  <div class="bot-card-icon">🎵</div>
+                  <img class="bot-card-icon nox" src="/nox.png" alt="" />
                   <div class="bot-card-text">
-                    <div class="bot-card-title">Música <span class="bot-tag">BOT</span></div>
+                    <div class="bot-card-title">Nox <span class="bot-tag">BOT</span></div>
                     <p>
                       Toca músicas do YouTube no canal de voz, sincronizadas para todo mundo da call. Entre num canal de voz e digite
                       <code>/tocar</code> com o link ou o nome da música, ou o link de uma playlist ou álbum (YouTube ou YouTube Music).
@@ -459,7 +459,7 @@ export class GuildSettings {
     try {
       await this.api.post(`/guilds/${this.guildId()}/bots`, { type: 'music' });
       await this.loadBots();
-      this.ui.toast('Bot de música adicionado. Entre num canal de voz e digite /tocar.', 'success');
+      this.ui.toast('Nox entrou no servidor. Entre num canal de voz e digite /tocar.', 'success');
     } catch (e) {
       this.ui.error(e);
     }
@@ -491,7 +491,7 @@ export class GuildSettings {
   async removeBot(b: BotInfo) {
     const ok = await confirmDialog(this.ui, {
       title: `Remover ${b.user.displayName}`,
-      body: b.builtin ? 'O bot de música sai do servidor e para de tocar.' : 'O bot sai do servidor. Você pode adicionar um bot novo depois.',
+      body: b.builtin ? 'O Nox sai do servidor e para de tocar.' : 'O bot sai do servidor. Você pode adicionar um bot novo depois.',
       confirmText: 'Remover',
       danger: true,
     });

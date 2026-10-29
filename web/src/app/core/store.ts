@@ -75,6 +75,8 @@ export class Store {
 
   /** My own soundboard sounds (not tied to a server). */
   readonly mySounds = signal<Sound[]>([]);
+  /** Nox, the built-in music bot. */
+  readonly musicBotId = signal<number | null>(null);
 
   /** Every custom emoji I can use anywhere: mine (guildId null), then each server's in order. */
   readonly customEmojis = computed<(CustomEmoji & { guildId: number | null })[]>(() => [
@@ -157,6 +159,7 @@ export class Store {
     this.music.set(Object.fromEntries((r.music ?? []).map((m) => [m.guildId, { ...m, receivedAt: Date.now() }])));
     this.myEmojis.set(r.myEmojis ?? []);
     this.mySounds.set(r.mySounds ?? []);
+    this.musicBotId.set(r.musicBotId ?? null);
     // History may have moved on while we were disconnected.
     for (const [id, list] of this.lists) {
       if (!channels[id]) this.lists.delete(id);

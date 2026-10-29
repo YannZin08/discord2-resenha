@@ -5475,6 +5475,10 @@ img.emoji.custom {
   font-size: 28px;
   flex-shrink: 0;
 }
+.bot-card-icon.nox {
+  background: #000;
+  object-fit: cover;
+}
 .bot-card-text {
   flex: 1;
   min-width: 0;

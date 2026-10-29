@@ -230,6 +230,8 @@ export interface Ready {
   myEmojis?: CustomEmoji[];
   /** My own soundboard sounds, usable in any call. */
   mySounds?: Sound[];
+  /** Nox, the built-in music bot (null until a server first adds it). */
+  musicBotId?: number | null;
 }
 
 export interface InviteInfo {

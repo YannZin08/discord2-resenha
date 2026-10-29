@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import type { Env } from './index';
 import { HELP, MAX_PLAYLIST, formatTime, isMix, parseCommand, playerError, playlistId, resolvePlaylist, resolveTrack, youtubeId, type MusicState, type Track } from './music';
 import { unfurl, type Embed } from './unfurl';
+import NOX_PICTURE from '../web/public/nox.png';
 import {
   HttpError,
   color,
@@ -17,6 +18,12 @@ import {
   toId,
   verifyPassword,
 } from './util';
+
+/** The music bot is Nox, the same in every server. */
+const NOX_NAME = 'Nox';
+const NOX_ABOUT = 'Nox, o bot de música do Resenha. Entre num canal de voz e digite /tocar seguido do link ou do nome da música.';
+/** Upload key of Nox's picture; a new picture needs a new key (files are cached forever). */
+const NOX_AVATAR = '0000000000000000000000000000a0a1';
 
 /** Songs in a row that fail to play before the music bot gives up. */
 const MAX_FAILURES = 3;
@@ -239,6 +246,11 @@ export class Hub extends DurableObject<Env> {
       this.music.set(s.guildId, s);
     }
     this.scheduleMusicCheck();
+    try {
+      if (this.musicBot(false)) this.dressNox(this.musicBot(false));
+    } catch (e) {
+      console.error('could not set up Nox', e);
+    }
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     this.registerRoutes();
   }
@@ -854,6 +866,7 @@ export class Hub extends DurableObject<Env> {
       music: guildIds.map((g) => this.musicPayload(g)).filter((m) => m.track),
       myEmojis: this.emojiList(0, uid),
       mySounds: this.soundList(0, uid),
+      musicBotId: this.musicBot(false) || null,
     };
   }
 
@@ -1484,7 +1497,7 @@ export class Hub extends DurableObject<Env> {
       this.run(ins, catText, gid, 'category', 'Canais de texto', '', null, 0);
       this.run(ins, general, gid, 'text', 'geral', '', catText, 0);
       this.run(ins, entries, gid, 'text', 'entradas-e-saídas', 'Quem entra e quem sai do servidor.', catText, 1);
-      this.run(ins, music, gid, 'text', 'música', 'Comandos do bot de música: /tocar, /pular, /fila…', catText, 2);
+      this.run(ins, music, gid, 'text', 'música', 'Comandos do Nox, o bot de música: /tocar, /pular, /fila…', catText, 2);
       this.run(ins, catVoice, gid, 'category', 'Canais de voz', '', null, 1);
       this.run(ins, voice, gid, 'voice', 'Geral', '', catVoice, 0);
     });
@@ -2321,17 +2334,54 @@ export class Hub extends DurableObject<Env> {
     if (row) return (this.musicBotId = Number(row.value));
     if (!create) return 0;
     const id = newId();
-    const taken = this.one("SELECT 1 FROM users WHERE username = 'musica'");
+    const taken = this.one("SELECT 1 FROM users WHERE username = 'nox'");
     this.run(
-      `INSERT INTO users (id, username, display_name, pass_hash, pass_salt, banner_color, about, created_at, bot)
-       VALUES (?, ?, 'Música', '!', '!', '#5865f2', ?, ?, 1)`,
+      `INSERT INTO users (id, username, display_name, pass_hash, pass_salt, about, created_at, bot)
+       VALUES (?, ?, ?, '!', '!', ?, ?, 1)`,
       id,
-      taken ? `musica.${id % 10000}` : 'musica',
-      'Bot de música do Resenha. Entre num canal de voz e digite /tocar seguido do link ou do nome da música.',
+      taken ? `nox.${id % 10000}` : 'nox',
+      NOX_NAME,
+      NOX_ABOUT,
       Date.now(),
     );
     this.run("INSERT INTO meta (key, value) VALUES ('music_bot', ?)", String(id));
+    this.dressNox(id);
     return (this.musicBotId = id);
+  }
+
+  /** Name, picture and @nox for the music bot, also for one created as "Música" before. */
+  private dressNox(id: number) {
+    if (!this.one('SELECT 1 FROM uploads WHERE key = ?', NOX_AVATAR)) {
+      this.tx(() => {
+        this.run('INSERT INTO file_chunks (key, idx, data) VALUES (?, 0, ?)', NOX_AVATAR, NOX_PICTURE);
+        this.run(
+          'INSERT INTO uploads (key, user_id, name, size, mime, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          NOX_AVATAR,
+          id,
+          'nox.png',
+          NOX_PICTURE.byteLength,
+          'image/png',
+          Date.now(),
+        );
+      });
+    }
+    const u = this.one('SELECT username, display_name, avatar, about FROM users WHERE id = ?', id);
+    if (!u) return;
+    const username = u.username.startsWith('musica') && !this.one("SELECT 1 FROM users WHERE username = 'nox'") ? 'nox' : u.username;
+    if (u.display_name === NOX_NAME && u.avatar === NOX_AVATAR && u.about === NOX_ABOUT && username === u.username) return;
+    this.run(
+      "UPDATE users SET username = ?, display_name = ?, avatar = ?, about = ?, banner_color = '#7c3aed' WHERE id = ?",
+      username,
+      NOX_NAME,
+      NOX_AVATAR,
+      NOX_ABOUT,
+      id,
+    );
+    const fresh = this.one('SELECT * FROM users WHERE id = ?', id);
+    const online = this.live()
+      .map((ws) => this.attOf(ws)?.uid)
+      .filter((uid): uid is number => uid != null);
+    if (fresh) this.broadcast([...new Set(online)], 'USER_UPDATE', this.pub(fresh));
   }
 
   private botInfo(gid: number, u: Row) {

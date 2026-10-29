@@ -154,9 +154,11 @@ export class Composer {
     const gid = this.channel().guildId;
     if (gid == null) return false;
     const users = this.store.users();
+    const nox = this.store.musicBotId();
     return Object.keys(this.store.members()[gid] ?? {}).some((id) => {
       const u = users[+id];
-      return u?.bot && u.username.startsWith('musica');
+      // Before the server says who Nox is (bot added after this session started), go by its @.
+      return u?.bot && (+id === nox || u.username === 'nox' || u.username.startsWith('musica'));
     });
   });
 
@@ -274,7 +276,7 @@ export class Composer {
         icon: 'speaker',
       }));
       this.acRange = [0, caret];
-      this.acTitle.set('Comandos do bot de música');
+      this.acTitle.set('Comandos do Nox');
       this.suggestions.set(list);
       this.acIndex.set(0);
       return;

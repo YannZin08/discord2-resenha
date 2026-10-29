@@ -3,6 +3,11 @@ account_id = "7e67e731bde2cac5f438f7332892d591"
 compatibility_date = "2026-07-29"
 main = "./worker/index.ts"
 
+# The music bot's picture (web/public/nox.png) is bundled so the server can store it as the bot's avatar.
+[[rules]]
+type = "Data"
+globs = ["**/*.png"]
+
 [assets]
 directory = "./web/dist/web/browser"
 binding = "ASSETS"
