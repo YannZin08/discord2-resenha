@@ -1,5 +1,5 @@
 import { NgComponentOutlet } from '@angular/common';
-import { Component, ElementRef, computed, effect, inject, input, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Api } from '../core/api';
 import { Nav } from '../core/nav';
@@ -18,6 +18,12 @@ import { Avatar, Icon } from './shared';
     @for (item of items(); track $index) {
       @if (item.separator) {
         <div class="menu-sep"></div>
+      } @else if (item.row; as row) {
+        <div class="menu-row">
+          @for (b of row; track $index) {
+            <button [attr.aria-label]="b.label" (click)="runRow(b.action, $event)"><img [src]="b.image" [alt]="b.label" /></button>
+          }
+        </div>
       } @else if (item.slider; as s) {
         <div class="menu-slider" (mousedown)="$event.stopPropagation()">
           <div class="menu-slider-label">{{ item.label }}</div>
@@ -52,7 +58,7 @@ import { Avatar, Icon } from './shared';
           } @else if (item.icon) {
             <app-icon [name]="item.icon" [size]="18" />
           }
-          @if (item.submenu && hovered() === $index) {
+          @if (item.submenu && hovered() === $index && !sheet()) {
             <div class="menu submenu"><app-menu-list [items]="item.submenu" /></div>
           }
         </div>
@@ -63,15 +69,25 @@ import { Avatar, Icon } from './shared';
 export class MenuList {
   private ui = inject(Ui);
   readonly items = input.required<MenuItem[]>();
+  /** In the phone's bottom sheet, a submenu replaces the list instead of flying out. */
+  readonly sheet = input(false);
+  readonly openSub = output<MenuItem[]>();
   readonly hovered = signal(-1);
   private sliderValues = new Map<MenuItem, number>();
 
   run(item: MenuItem, e: MouseEvent) {
     e.stopPropagation();
+    if (item.submenu && this.sheet() && !item.disabled) return this.openSub.emit(item.submenu);
     if (item.disabled || item.submenu) return;
     if (item.checked === undefined) this.ui.closeMenus();
     item.action?.();
     if (item.checked !== undefined) item.checked = !item.checked;
+  }
+
+  runRow(action: () => void, e: MouseEvent) {
+    e.stopPropagation();
+    this.ui.closeMenus();
+    action();
   }
 
   sliderValue(item: MenuItem) {
@@ -87,13 +103,29 @@ export class MenuList {
 
 @Component({
   selector: 'app-context-menu',
-  imports: [MenuList],
+  imports: [MenuList, Icon],
   template: `
     @if (ui.menu(); as m) {
       <div class="menu-backdrop" (mousedown)="ui.closeMenus()" (contextmenu)="$event.preventDefault(); ui.closeMenus()"></div>
-      <div class="menu" #el [style.left.px]="pos().x" [style.top.px]="pos().y" (contextmenu)="$event.preventDefault()">
-        <app-menu-list [items]="m.items" />
-      </div>
+      @if (ui.mobile()) {
+        <div class="menu sheet" (contextmenu)="$event.preventDefault()">
+          <div class="sheet-handle"></div>
+          @if (sub(); as items) {
+            <div class="menu-item" (click)="sub.set(null)">
+              <app-icon name="chevronLeft" [size]="18" />
+              <span class="menu-label">Voltar</span>
+            </div>
+            <div class="menu-sep"></div>
+            <app-menu-list [items]="items" [sheet]="true" (openSub)="sub.set($event)" />
+          } @else {
+            <app-menu-list [items]="m.items" [sheet]="true" (openSub)="sub.set($event)" />
+          }
+        </div>
+      } @else {
+        <div class="menu" #el [style.left.px]="pos().x" [style.top.px]="pos().y" (contextmenu)="$event.preventDefault()">
+          <app-menu-list [items]="m.items" />
+        </div>
+      }
     }
   `,
 })
@@ -101,10 +133,12 @@ export class ContextMenu {
   readonly ui = inject(Ui);
   private el = viewChild<ElementRef<HTMLElement>>('el');
   readonly pos = signal({ x: 0, y: 0 });
+  readonly sub = signal<MenuItem[] | null>(null);
 
   constructor() {
     effect(() => {
       const m = this.ui.menu();
+      this.sub.set(null);
       if (!m) return;
       this.pos.set({ x: m.x, y: m.y });
       setTimeout(() => {

@@ -23,9 +23,13 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
   imports: [FormsModule, Icon, GuildIcon, Avatar, EmojiManager, SoundManager],
   template: `
     @if (guild(); as g) {
-      <div class="settings-layer">
-        <nav class="settings-nav scroller thin">
+      <div class="settings-layer" [class.show-content]="contentOpen()">
+        <nav class="settings-nav scroller thin" (click)="openSection($event)">
           <div class="settings-nav-inner">
+            <div class="settings-mobile-head mobile-only">
+              <h2>{{ g.name }}</h2>
+              <button class="icon-btn" aria-label="Fechar" (click)="ui.close()"><app-icon name="close" /></button>
+            </div>
             <h3>{{ g.name }}</h3>
             <button [class.active]="section() === 'overview'" (click)="section.set('overview')">Visão geral</button>
             <button [class.active]="section() === 'roles'" (click)="section.set('roles')">Cargos</button>
@@ -44,6 +48,7 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
         </nav>
         <div class="settings-content scroller">
           <div class="settings-content-inner">
+            <button class="settings-back mobile-only" (click)="contentOpen.set(false)"><app-icon name="chevronLeft" /> Voltar</button>
             @switch (section()) {
               @case ('overview') {
                 <h2>Visão geral do servidor</h2>
@@ -282,6 +287,13 @@ export class GuildSettings {
   /** Section to open on, e.g. "sounds" from the soundboard. */
   readonly start = input<Section>('overview');
   readonly section = linkedSignal(() => this.start());
+  /** On phones the section list and the section take turns on screen, like Discord's app. */
+  readonly contentOpen = linkedSignal(() => this.start() !== 'overview');
+
+  openSection(e: Event) {
+    const b = (e.target as Element).closest('button');
+    if (b && !b.classList.contains('danger') && !b.closest('.settings-mobile-head')) this.contentOpen.set(true);
+  }
   readonly busy = signal(false);
   readonly guild = computed(() => this.store.guilds()[this.guildId()]);
   readonly owner = computed(() => this.store.isOwner(this.guildId()));

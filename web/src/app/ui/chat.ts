@@ -1,4 +1,4 @@
-import { Component, ElementRef, HostListener, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
+import { Component, ElementRef, HostListener, Injector, afterNextRender, computed, effect, inject, input, signal, untracked, viewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { Api } from '../core/api';
 import { Nav } from '../core/nav';
@@ -35,8 +35,8 @@ const GROUP_WINDOW = 7 * 60_000;
   template: `
     @let c = channel();
     <section class="chat" (dragenter)="dragEnter($event)" (dragover)="dragOver($event)" (dragleave)="dragLeave($event)" (drop)="drop($event)">
-      <header class="chat-header">
-        <button class="icon-btn mobile-only" (click)="ui.mobileNav.set(true)"><app-icon name="menu" /></button>
+      <header class="chat-header" [class.searching]="mobileSearch()">
+        <button class="icon-btn mobile-only" aria-label="Canais" (click)="ui.mobileNav.set(true)"><app-icon name="menu" /></button>
         @if (c.type === 'dm') {
           <app-avatar [user]="partner()" [size]="24" [status]="store.statusOf(partner()?.id ?? 0)" />
           <h1 class="chat-title" (click)="openPartner($event)">{{ title() }}</h1>
@@ -62,7 +62,7 @@ const GROUP_WINDOW = 7 * 60_000;
           @if (c.type !== 'dm') {
             <button
               class="icon-btn"
-              [class.active]="ui.memberList() && !ui.panel()"
+              [class.active]="showMembers() && !ui.panel()"
               appTip="Mostrar lista de membros"
               tipSide="bottom"
               (click)="toggleMembers()"
@@ -70,12 +70,14 @@ const GROUP_WINDOW = 7 * 60_000;
               <app-icon name="members" />
             </button>
           }
+          <button class="icon-btn narrow-only" aria-label="Buscar" (click)="openMobileSearch()"><app-icon name="search" /></button>
           <div class="search-box" [class.focused]="searchFocused()">
             <input
+              #searchInput
               placeholder="Buscar"
               [(ngModel)]="searchText"
               (focus)="searchFocused.set(true)"
-              (blur)="searchFocused.set(false)"
+              (blur)="searchFocused.set(false); !searchText && mobileSearch.set(false)"
               (keydown.enter)="search()"
             />
             <app-icon [name]="searchText ? 'close' : 'search'" [size]="16" (click)="clearSearch()" />
@@ -145,7 +147,10 @@ const GROUP_WINDOW = 7 * 60_000;
           <app-pins-panel [channel]="c" />
         } @else if (ui.panel() === 'search') {
           <app-search-panel [channel]="c" />
-        } @else if (c.type !== 'dm' && ui.memberList()) {
+        } @else if (c.type !== 'dm' && showMembers()) {
+          @if (ui.narrow()) {
+            <div class="drawer-scrim" (click)="ui.mobileMembers.set(false)"></div>
+          }
           <app-member-list [channel]="c" />
         }
       </div>
@@ -310,7 +315,23 @@ export class Chat {
     this.ui.panel.set(this.ui.panel() === p ? null : p);
   }
 
+  /** Beside the chat on wide screens; a drawer that starts closed on narrow ones. */
+  readonly showMembers = computed(() => (this.ui.narrow() ? this.ui.mobileMembers() : this.ui.memberList()));
+  readonly mobileSearch = signal(false);
+  private injector = inject(Injector);
+  private searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
+
+  openMobileSearch() {
+    this.mobileSearch.set(true);
+    afterNextRender(() => this.searchInput()?.nativeElement.focus(), { injector: this.injector });
+  }
+
   toggleMembers() {
+    if (this.ui.narrow()) {
+      this.ui.panel.set(null);
+      this.ui.mobileMembers.update((v) => !v);
+      return;
+    }
     if (this.ui.panel()) {
       this.ui.panel.set(null);
       if (!this.ui.memberList()) this.ui.toggleMemberList();
@@ -324,6 +345,8 @@ export class Chat {
     if (!q) return;
     this.ui.searchQuery.set(q);
     this.ui.panel.set('search');
+    // On phones the results cover the chat; the header goes back to normal behind them.
+    this.mobileSearch.set(false);
   }
 
   clearSearch() {

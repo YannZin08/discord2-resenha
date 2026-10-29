@@ -33,9 +33,13 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
   imports: [FormsModule, Icon, Avatar, StreamOptions, VoiceSettings, ProfileCard, EmojiManager, SoundManager],
   template: `
     @if (store.me(); as me) {
-      <div class="settings-layer">
-        <nav class="settings-nav scroller thin">
+      <div class="settings-layer" [class.show-content]="contentOpen()">
+        <nav class="settings-nav scroller thin" (click)="openSection($event)">
           <div class="settings-nav-inner">
+            <div class="settings-mobile-head mobile-only">
+              <h2>Configurações</h2>
+              <button class="icon-btn" aria-label="Fechar" (click)="close()"><app-icon name="close" /></button>
+            </div>
             <h3>Configurações de usuário</h3>
             <button [class.active]="section() === 'account'" (click)="section.set('account')">Minha conta</button>
             <button [class.active]="section() === 'profile'" (click)="section.set('profile')">Perfis</button>
@@ -53,6 +57,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
         </nav>
         <div class="settings-content scroller">
           <div class="settings-content-inner">
+            <button class="settings-back mobile-only" (click)="contentOpen.set(false)"><app-icon name="chevronLeft" /> Voltar</button>
             @switch (section()) {
               @case ('account') {
                 <h2>Minha conta</h2>
@@ -387,6 +392,13 @@ export class UserSettings {
   /** Section to open on, e.g. "profile" from the profile card's "Editar perfil". */
   readonly start = input<Section>('account');
   readonly section = linkedSignal(() => this.start());
+  /** On phones the section list and the section take turns on screen, like Discord's app. */
+  readonly contentOpen = linkedSignal(() => this.start() !== 'account');
+
+  openSection(e: Event) {
+    const b = (e.target as Element).closest('button');
+    if (b && !b.classList.contains('danger') && !b.closest('.settings-mobile-head')) this.contentOpen.set(true);
+  }
   readonly pwError = signal('');
   readonly uploading = signal<'avatar' | 'banner' | null>(null);
   readonly permission = signal('Notification' in window ? Notification.permission : 'denied');

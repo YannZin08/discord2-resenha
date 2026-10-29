@@ -1,5 +1,6 @@
 import { Component, HostListener, computed, effect, inject } from '@angular/core';
 import { loadEmojis } from './core/emoji';
+import { enableLongPress } from './core/long-press';
 import { Nav } from './core/nav';
 import { Prefs } from './core/prefs';
 import { Session } from './core/session';
@@ -17,7 +18,7 @@ import { Shell } from './ui/shell';
 
 const TIPS = [
   'Dica: segure Shift e aperte Enter para pular uma linha.',
-  'Dica: clique com o botão direito em quase tudo para ver mais opções.',
+  'Dica: clique com o botão direito (ou segure o dedo, no celular) em quase tudo para ver mais opções.',
   'Dica: use Ctrl+K para achar canais e conversas rapidinho.',
   'Dica: arraste arquivos para o chat para enviá-los.',
   'Dica: aperte seta para cima para editar sua última mensagem.',
@@ -75,6 +76,7 @@ export class App {
 
   constructor() {
     void this.session.init();
+    enableLongPress();
     effect(() => applyTheme(this.prefs.data().theme, this.prefs.data().chatFont, this.prefs.data().accent));
     // The full emoji list (for :nomes: and the picker) comes in once the app is open.
     effect(() => {

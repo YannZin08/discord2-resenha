@@ -13,6 +13,8 @@ export interface MenuItem {
   action?: () => void;
   submenu?: MenuItem[];
   slider?: { value: number; min: number; max: number; onInput: (v: number) => void; format?: (v: number) => string };
+  /** A row of image buttons, e.g. quick reactions at the top of a message's menu on phones. */
+  row?: { label: string; image: string; action: () => void }[];
 }
 
 export interface ModalEntry {
@@ -37,6 +39,14 @@ export interface ProfilePopout {
 
 let seq = 0;
 
+/** A signal that follows a CSS media query. */
+function media(query: string) {
+  const mq = typeof matchMedia === 'function' ? matchMedia(query) : null;
+  const s = signal(mq?.matches ?? false);
+  mq?.addEventListener('change', (e) => s.set(e.matches));
+  return s.asReadonly();
+}
+
 @Injectable({ providedIn: 'root' })
 export class Ui {
   readonly modals = signal<ModalEntry[]>([]);
@@ -48,6 +58,12 @@ export class Ui {
   /** Soundboard popover, anchored above the button that opened it. */
   readonly soundboard = signal<{ x: number; y: number } | null>(null);
   readonly memberList = signal<boolean>(store('memberList', true));
+  /** Phone-sized screen: channels and servers live in a drawer. */
+  readonly mobile = media('(max-width: 768px)');
+  /** Too narrow for the member list beside the chat: it opens as a drawer instead. */
+  readonly narrow = media('(max-width: 900px)');
+  /** Touch screen without hover, where long presses stand in for right clicks. */
+  readonly touch = media('(hover: none)');
   readonly mobileNav = signal(false);
   readonly mobileMembers = signal(false);
   readonly panel = signal<'pins' | 'search' | null>(null);

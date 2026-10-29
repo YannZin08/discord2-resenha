@@ -261,7 +261,8 @@ img.emoji {
 .spacer {
   flex: 1;
 }
-.mobile-only {
+.mobile-only,
+.narrow-only {
   display: none !important;
 }
 
@@ -879,7 +880,8 @@ select.input {
 /* ------------------------------------------------------------- layout */
 
 .shell {
-  height: 100%;
+  /* Follows the on-screen keyboard on phones (set in shell.ts). */
+  height: var(--app-height, 100%);
   display: flex;
   flex-direction: column;
 }
@@ -5470,11 +5472,51 @@ img.emoji.custom {
 }
 
 @media (max-width: 900px) {
-  .member-list {
-    display: none;
+  .narrow-only {
+    display: inline-flex !important;
   }
+  /* The member list opens as a drawer from the right (header button or swiping left). */
+  .member-list {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    width: min(300px, 85vw);
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
+    box-shadow: var(--elevation-high);
+    animation: drawer-in-right 0.25s var(--ease-out, ease);
+  }
+  .drawer-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    background: rgba(0, 0, 0, 0.6);
+    animation: fade-in 0.2s ease;
+  }
+  /* Search hides behind a button and takes over the header when opened. */
   .search-box {
     display: none;
+  }
+  .chat-header.searching > :not(.chat-tools),
+  .chat-header.searching .chat-tools > :not(.search-box) {
+    display: none !important;
+  }
+  .chat-header.searching .chat-tools {
+    flex: 1;
+    margin-left: 0;
+  }
+  .chat-header.searching .search-box {
+    display: flex;
+    flex: 1;
+    width: auto;
+    height: 34px;
+  }
+}
+@keyframes drawer-in-right {
+  from {
+    transform: translateX(100%);
   }
 }
 
@@ -5840,4 +5882,271 @@ img.emoji.custom {
 :root[data-motion='reduced'] *::after {
   animation: none !important;
   transition: none !important;
+}
+
+/* ------------------------------------------------------------- phones */
+
+/* Touch screens: a long press opens menus, so it must not select text or pop the system callout. */
+@media (hover: none) {
+  .shell {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .shell input,
+  .shell textarea,
+  .shell [contenteditable='true'] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  /* The hover toolbar can't be reached by touch; the long-press menu has the same actions. */
+  .msg-toolbar {
+    display: none !important;
+  }
+  .shell * {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* iOS zooms into any field with text under 16px when it gets focus. */
+@media (hover: none) and (max-width: 900px) {
+  input:not([type='range'], [type='checkbox'], [type='radio'], [type='color']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Notch and home bar of phones (the page goes edge to edge, viewport-fit=cover). */
+  .shell {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
+  }
+  .main {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .nav-col {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--bg-tertiary);
+  }
+  .sidebar {
+    width: calc(100vw - 72px - 56px);
+    max-width: 340px;
+  }
+  .chat-header {
+    height: 52px;
+    gap: 4px;
+  }
+  .chat-title {
+    flex-shrink: 1;
+    min-width: 0;
+    max-width: none;
+  }
+  .chat-tools {
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .chat-header .icon-btn {
+    min-width: 40px;
+    min-height: 40px;
+    justify-content: center;
+  }
+  /* Friends: the tabs get a row of their own under the title and scroll sideways. */
+  .friends .chat-header {
+    flex-wrap: wrap;
+    height: auto;
+    padding-top: 6px;
+    padding-bottom: 8px;
+    row-gap: 6px;
+  }
+  .friends .chat-header .chat-topic-sep {
+    display: none;
+  }
+  .friends-tabs {
+    flex: 1 0 100%;
+    min-width: 0;
+  }
+  .friends-tabs button {
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+
+  /* Menus, profile cards, the emoji picker and the soundboard rise from the bottom of the screen. */
+  .menu.sheet,
+  .profile-popout,
+  .emoji-picker,
+  .soundboard {
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    width: auto !important;
+    max-width: none !important;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: sheet-in 0.25s var(--ease-out, ease) !important;
+    transform: none;
+  }
+  .menu-backdrop {
+    background: rgba(0, 0, 0, 0.5);
+    animation: fade-in 0.2s ease;
+  }
+  .menu.sheet {
+    max-height: 75%;
+    overflow-y: auto;
+    padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+  }
+  .sheet-handle {
+    width: 40px;
+    height: 4px;
+    margin: 2px auto 10px;
+    border-radius: 2px;
+    background: var(--interactive-muted, rgba(255, 255, 255, 0.25));
+  }
+  .menu.sheet .menu-item {
+    min-height: 48px;
+    padding: 10px 12px;
+    font-size: 16px;
+  }
+  .menu-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 2px 0 8px;
+  }
+  .menu-row button {
+    flex: 1;
+    max-width: 52px;
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--bg-mod-hover, rgba(255, 255, 255, 0.06));
+    font-size: 24px;
+  }
+  .menu-row img {
+    width: 26px;
+    height: 26px;
+  }
+  .menu.sheet .menu-slider {
+    padding: 8px 12px;
+  }
+  .profile-popout {
+    max-height: 85%;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+  }
+  .profile-popout .profile-card {
+    width: auto;
+    border-radius: 16px 16px 0 0;
+  }
+  .emoji-picker {
+    height: 60%;
+  }
+  .soundboard {
+    max-height: 70%;
+  }
+  .toasts {
+    bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+
+  /* Settings: the section list first, then the section with a "Voltar" button. */
+  .settings-layer {
+    flex-direction: row;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .settings-nav {
+    flex: 1;
+    max-height: none;
+  }
+  .settings-layer.show-content .settings-nav,
+  .settings-layer:not(.show-content) .settings-content {
+    display: none;
+  }
+  .settings-nav-inner {
+    padding: 8px 12px 40px;
+  }
+  .settings-nav button {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+  .settings-mobile-head {
+    display: flex !important;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0 12px 10px;
+  }
+  .settings-mobile-head h2 {
+    flex: 1;
+    min-width: 0;
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--header-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .settings-content {
+    flex: 1;
+  }
+  .settings-content-inner {
+    padding: 8px 16px 80px;
+  }
+  .settings-back {
+    align-items: center;
+    gap: 4px;
+    margin: 0 0 12px -6px;
+    padding: 8px 6px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--interactive-normal);
+  }
+  .settings-close {
+    display: none;
+  }
+
+  /* Dialogs use the whole width and stay above the keyboard. */
+  .modal-layer {
+    padding: 8px;
+    padding-bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+  .modal {
+    max-width: none;
+  }
+  .modal.switcher {
+    align-self: flex-start;
+    margin-top: env(safe-area-inset-top);
+  }
+
+  /* Calls: tiles two by two and big round buttons. */
+  .stage {
+    padding: 8px;
+    gap: 8px;
+  }
+  .tile {
+    flex-basis: calc(50% - 4px);
+    min-width: 0;
+  }
+  .stage-grid[data-count='1'] .tile,
+  .stage-grid[data-count='2'] .tile {
+    flex-basis: 100%;
+  }
+  .stage-controls {
+    gap: 10px;
+    flex-wrap: wrap;
+    padding-bottom: 4px;
+  }
+  .lightbox-inner img,
+  .lightbox-inner video {
+    max-width: 100vw;
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
 }

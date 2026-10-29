@@ -19,7 +19,8 @@ export class Tip implements OnDestroy {
   @HostListener('mouseenter')
   show() {
     const text = this.appTip();
-    if (!text) return;
+    // A tap on a touch screen also "enters" the element, and the tooltip would never leave.
+    if (!text || matchMedia('(hover: none)').matches) return;
     this.hide();
     const tip = document.createElement('div');
     tip.className = `tooltip tooltip-${this.tipSide()}`;

@@ -601,6 +601,16 @@ export class MessageItem {
     if (this.isMine() || (m.guildId != null && this.store.isAdmin(m.guildId))) {
       items.push({ separator: true }, { label: 'Excluir mensagem', icon: 'trash', danger: true, action: () => void this.delete(e.shiftKey) });
     }
+    // Phones have no hover toolbar: the menu starts with the quick reactions, like Discord's app.
+    if (this.ui.mobile()) {
+      const recent = this.prefs.data().recentEmojis.slice(0, 6);
+      if (recent.length) {
+        items.unshift(
+          { row: recent.map((emoji) => ({ label: emojiLabel(emoji), image: this.emojiUrl(emoji), action: () => this.toggleReaction(emoji) })) },
+          { separator: true },
+        );
+      }
+    }
     this.ui.openMenu(e, items);
   }
 }
