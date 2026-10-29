@@ -17,6 +17,7 @@ export function profileOf(u: User | null | undefined): Profile {
   return {
     ...DEFAULT_PROFILE,
     ...p,
+    style: p.style === 'immersive' ? 'immersive' : 'card',
     status: { ...DEFAULT_PROFILE.status, ...p.status },
     privacy: { ...DEFAULT_PROFILE.privacy, ...p.privacy },
     interests: p.interests ?? [],

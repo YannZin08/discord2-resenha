@@ -32,7 +32,7 @@ interface ProfileExtras {
  * A person's profile: their little corner of the Resenha. Banner (GIF or picture) under a
  * shade that keeps the text readable, status line, "vibe" tag, Minha resenha, link,
  * interests, selos and what people say about them; then the call they're in and dates.
- * Three looks (card, immersive, minimal); sections with nothing in them don't show.
+ * Two looks (card, immersive); sections with nothing in them don't show.
  * The popout and the profile settings preview both draw it; `preview` drops the buttons.
  * The popout puts roles and the message box at the end (ng-content).
  */
@@ -42,18 +42,17 @@ interface ProfileExtras {
   template: `
     @let u = user();
     @let p = prof();
-    @let minimal = p.style === 'minimal';
     <div
       class="profile-card"
       [attr.data-style]="p.style"
       [class.themed]="!!theme()"
-      [class.banner-image]="!!u.banner && !minimal"
+      [class.banner-image]="!!u.banner"
       [style.--profile-1]="theme()?.[0]"
       [style.--profile-2]="theme()?.[1]"
       [style.--shade]="shade()"
     >
-      <div class="profile-banner" [class.has-image]="!!u.banner && !minimal" [style.background-color]="u.bannerColor || theme()?.[0] || fallbackColor()">
-        @if (u.banner && !minimal) {
+      <div class="profile-banner" [class.has-image]="!!u.banner" [style.background-color]="u.bannerColor || theme()?.[0] || fallbackColor()">
+        @if (u.banner) {
           <img class="profile-banner-img" [src]="bannerSrc(u.banner)" alt="" draggable="false" (load)="measure($event)" />
           <div class="profile-banner-shade"></div>
         }
@@ -74,7 +73,7 @@ interface ProfileExtras {
         </div>
       }
       <div class="profile-avatar">
-        <app-avatar [user]="u" [size]="minimal ? 64 : 80" [status]="store.statusOf(u.id)" />
+        <app-avatar [user]="u" [size]="80" [status]="store.statusOf(u.id)" />
       </div>
       <div class="profile-body">
         <div class="profile-names">
@@ -109,7 +108,7 @@ interface ProfileExtras {
             </span>
           }
         </div>
-        @if (!minimal && mutualText(); as text) {
+        @if (mutualText(); as text) {
           <button class="profile-mutuals" (click)="mutualsMenu($event)">
             @if (extras()?.mutualFriends?.length) {
               <span class="mutual-avatars">
@@ -123,22 +122,18 @@ interface ProfileExtras {
         }
         @if (u.about) {
           <div class="profile-section">
-            @if (!minimal) {
-              <h3>Minha resenha</h3>
-            }
-            <p class="profile-about" [class.clamp]="minimal" [innerHTML]="aboutHtml()"></p>
+            <h3>Minha resenha</h3>
+            <p class="profile-about" [innerHTML]="aboutHtml()"></p>
           </div>
         }
-        @if (!minimal && p.link) {
+        @if (p.link) {
           <a class="profile-link" [href]="p.link" target="_blank" rel="noopener noreferrer nofollow">
             <app-icon name="link" [size]="16" /><span>{{ linkText() }}</span>
           </a>
         }
         @if (interests().length) {
           <div class="profile-section">
-            @if (!minimal) {
-              <h3>Interesses</h3>
-            }
+            <h3>Interesses</h3>
             <div class="profile-tags">
               @for (t of interests(); track t) {
                 <span class="profile-tag">{{ t }}</span>
@@ -146,7 +141,7 @@ interface ProfileExtras {
             </div>
           </div>
         }
-        @if (!minimal && selos().length) {
+        @if (selos().length) {
           <div class="profile-section">
             <h3>Selos</h3>
             <div class="profile-selos">
@@ -156,7 +151,7 @@ interface ProfileExtras {
             </div>
           </div>
         }
-        @if (!minimal && reactions().length && (p.privacy.reactions || isMe())) {
+        @if (reactions().length && (p.privacy.reactions || isMe())) {
           <div class="profile-section">
             <h3>A galera diz</h3>
             <div class="profile-reactions">
@@ -174,7 +169,7 @@ interface ProfileExtras {
             </div>
           </div>
         }
-        @if (!minimal && store.activityOf(u.id); as a) {
+        @if (store.activityOf(u.id); as a) {
           <div class="profile-call profile-activity">
             <div class="pc-head">Jogando</div>
             <div class="pc-body">
@@ -186,7 +181,7 @@ interface ProfileExtras {
             </div>
           </div>
         }
-        @if (!compact() && !minimal && call(); as c) {
+        @if (!compact() && call(); as c) {
           <div class="profile-call">
             <div class="pc-head">{{ c.streaming ? 'Ao vivo' : 'Em voz' }}</div>
             <div class="pc-body">
@@ -225,7 +220,7 @@ interface ProfileExtras {
             }
           </div>
         }
-        @if (!compact() && !minimal && p.privacy.joined) {
+        @if (!compact() && p.privacy.joined) {
           <div class="profile-section">
             <h3>Membro desde</h3>
             <div class="profile-dates">
@@ -267,11 +262,7 @@ export class ProfileCard {
   readonly prof = computed(() => profileOf(this.user()));
   readonly status = computed(() => statusLine(this.user()));
   readonly linkText = computed(() => linkLabel(this.prof().link ?? ''));
-  /** The minimal look shows just two tags. */
-  readonly interests = computed(() => {
-    const p = this.prof();
-    return p.style === 'minimal' ? p.interests.slice(0, 2) : p.interests;
-  });
+  readonly interests = computed(() => this.prof().interests);
   /** Banner brightness (0–1) measured when it loads; drives the automatic shade. */
   private brightness = signal<number | null>(null);
   /** How dark the shade over the banner is: the person's choice, or more for bright pictures. */

@@ -553,7 +553,6 @@ export class UserSettings {
   readonly styles: { id: ProfileStyle; label: string; hint: string }[] = [
     { id: 'card', label: 'Cartão', hint: 'o padrão' },
     { id: 'immersive', label: 'Imersivo', hint: 'o fundo no card todo' },
-    { id: 'minimal', label: 'Minimalista', hint: 'só o essencial' },
   ];
   readonly privacyOptions: { key: keyof Profile['privacy']; label: string }[] = [
     { key: 'status', label: 'Mostrar meu status personalizado' },

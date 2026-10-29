@@ -3624,10 +3624,9 @@ app-profile-card {
 .profile-card.themed {
   background: linear-gradient(180deg, var(--profile-1), var(--profile-2));
   --card-bg: var(--profile-1);
-  --status-ring: var(--profile-1);
-}
-.profile-card.themed .profile-avatar {
-  background: var(--profile-1);
+  /* The avatar ring is a dark version of the theme: a clean circle that doesn't melt into the card. */
+  --ring-bg: color-mix(in srgb, var(--profile-1) 30%, #0d0812);
+  --status-ring: var(--ring-bg);
 }
 /* On a theme gradient the text sits on a soft see-through panel, so any two colors stay readable. */
 .profile-card.themed .profile-body {
@@ -3659,21 +3658,25 @@ app-profile-card {
   height: 100%;
   object-fit: cover;
 }
-/* Shade over the picture (darker for bright ones) that melts into the card at the bottom. */
+/* Shade over the picture (darker for bright ones), a little deeper at the bottom; only dark,
+   never the theme color, so there's no glowing band under the banner. */
 .profile-banner-shade {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, transparent 45%, var(--card-bg) 100%),
+    linear-gradient(180deg, transparent 40%, rgba(10, 6, 16, 0.35) 100%),
     rgba(10, 6, 16, var(--shade));
 }
+/* An even ring all around the picture (the box hugs the avatar, so it stays a true circle). */
 .profile-avatar {
   position: absolute;
-  top: var(--avatar-top);
-  left: 16px;
-  padding: 6px;
+  top: calc(var(--avatar-top) + 2px);
+  left: 18px;
+  display: flex;
+  padding: 4px;
   border-radius: 50%;
-  background: var(--bg-popout);
+  background: var(--ring-bg, var(--bg-popout));
+  line-height: 0;
 }
 .profile-actions {
   position: absolute;
@@ -3844,12 +3847,6 @@ app-profile-card {
 .profile-reaction:disabled {
   cursor: default;
 }
-.profile-about.clamp {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
 .role-add.labeled {
   width: auto;
   gap: 4px;
@@ -3907,21 +3904,6 @@ app-profile-card {
   background: transparent;
   backdrop-filter: none;
   padding: 0;
-}
-
-/* Minimalista: a thin color band, a smaller avatar, name, status, a line and two tags. */
-.profile-card[data-style='minimal'] .profile-banner {
-  height: 44px;
-}
-.profile-card[data-style='minimal'] .profile-avatar {
-  top: 10px;
-}
-.profile-card[data-style='minimal'] .profile-body {
-  margin-top: 36px;
-}
-.profile-card[data-style='minimal'] .profile-roles,
-.profile-card[data-style='minimal'] .profile-mutuals {
-  display: none;
 }
 .profile-mutuals {
   display: flex;

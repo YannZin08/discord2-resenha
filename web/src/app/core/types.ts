@@ -28,7 +28,7 @@ export interface User {
 /** Mirrors worker/profile.ts. */
 export type StatusMode = 'playing' | 'listening' | 'available' | 'busy' | 'resenha';
 export type VibeLabel = 'Vibe' | 'Modo' | 'Energia' | 'Tag' | 'Personalidade';
-export type ProfileStyle = 'card' | 'immersive' | 'minimal';
+export type ProfileStyle = 'card' | 'immersive';
 
 export interface Profile {
   status: { mode: StatusMode | null; emoji: string | null; color: string | null };

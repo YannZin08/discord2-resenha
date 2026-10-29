@@ -19,11 +19,11 @@ export interface Profile {
 
 export type StatusMode = 'playing' | 'listening' | 'available' | 'busy' | 'resenha';
 export type VibeLabel = 'Vibe' | 'Modo' | 'Energia' | 'Tag' | 'Personalidade';
-export type ProfileStyle = 'card' | 'immersive' | 'minimal';
+export type ProfileStyle = 'card' | 'immersive';
 
 const STATUS_MODES: StatusMode[] = ['playing', 'listening', 'available', 'busy', 'resenha'];
 const VIBE_LABELS: VibeLabel[] = ['Vibe', 'Modo', 'Energia', 'Tag', 'Personalidade'];
-const STYLES: ProfileStyle[] = ['card', 'immersive', 'minimal'];
+const STYLES: ProfileStyle[] = ['card', 'immersive'];
 
 export const MAX_INTERESTS = 6;
 const MAX_INTEREST = 20;
@@ -57,6 +57,8 @@ export function readProfile(raw: unknown): Profile {
   return {
     ...DEFAULT_PROFILE,
     ...p,
+    // A style that no longer exists (the old "minimal") falls back to the card.
+    style: STYLES.includes(p.style as ProfileStyle) ? (p.style as ProfileStyle) : 'card',
     status: { ...DEFAULT_PROFILE.status, ...p.status },
     privacy: { ...DEFAULT_PROFILE.privacy, ...p.privacy },
     interests: Array.isArray(p.interests) ? p.interests : [],
