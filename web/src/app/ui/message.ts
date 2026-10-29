@@ -191,151 +191,154 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
           <span class="msg-hover-time" [appTip]="fullTime()">{{ shortTime() }}</span>
         }
 
-        @if (editing()) {
-          <div class="msg-edit">
-            <div class="textarea-wrap">
-              <textarea
-                appAutosize
-                appAutofocus
-                rows="1"
-                [(ngModel)]="editText"
-                (keydown)="editKey($event)"
-              ></textarea>
-            </div>
-            <div class="edit-hint">esc para <a (click)="cancelEdit()">cancelar</a> • enter para <a (click)="saveEdit()">salvar</a></div>
-          </div>
-        } @else if (m.content) {
-          <div class="msg-content" [class.jumbo]="jumbo()" [innerHTML]="html()" (click)="contentClick($event)"></div>
-        }
-
-        @if (m.attachments.length || m.localFiles?.length) {
-          <div class="attachments">
-            @for (a of m.attachments; track a.key) {
-              @if (isImage(a.mime)) {
-                <div class="att-image" [style.width.px]="size(a)?.width" [style.height.px]="size(a)?.height" (click)="openImage(a)">
-                  <img [src]="url(a)" [alt]="a.name" loading="lazy" />
-                </div>
-              } @else if (isVideo(a.mime)) {
-                <video class="att-video" [src]="url(a)" controls preload="metadata" [style.max-width.px]="400"></video>
-              } @else if (isAudio(a.mime)) {
-                <div class="att-file audio">
-                  <div class="att-file-row">
-                    <app-icon name="file" [size]="32" />
-                    <div class="att-file-info">
-                      <a [href]="url(a)" target="_blank" rel="noopener">{{ a.name }}</a>
-                      <span>{{ formatSize(a.size) }}</span>
-                    </div>
-                  </div>
-                  <audio [src]="url(a)" controls preload="metadata"></audio>
-                </div>
-              } @else {
-                <div class="att-file">
-                  <div class="att-file-row">
-                    <app-icon name="file" [size]="32" />
-                    <div class="att-file-info">
-                      <a [href]="url(a)" target="_blank" rel="noopener">{{ a.name }}</a>
-                      <span>{{ formatSize(a.size) }}</span>
-                    </div>
-                    <a class="att-download" [href]="url(a)" [attr.download]="a.name" appTip="Baixar"><app-icon name="download" /></a>
-                  </div>
-                </div>
-              }
-            }
-            @for (f of m.localFiles ?? []; track f.id) {
-              <div class="att-file uploading">
-                <div class="att-file-row">
-                  <app-icon name="file" [size]="32" />
-                  <div class="att-file-info">
-                    <span class="att-name">{{ f.name }}</span>
-                    <div class="progress"><div class="progress-bar" [style.width.%]="(chat.uploadProgress()[f.id] || 0) * 100"></div></div>
-                  </div>
-                </div>
+        <!-- Balões: bubble, attachments, time and the hover bar together, so the bar sits over the message. -->
+        <div class="msg-body">
+          @if (editing()) {
+            <div class="msg-edit">
+              <div class="textarea-wrap">
+                <textarea
+                  appAutosize
+                  appAutofocus
+                  rows="1"
+                  [(ngModel)]="editText"
+                  (keydown)="editKey($event)"
+                ></textarea>
               </div>
-            }
-          </div>
-        }
+              <div class="edit-hint">esc para <a (click)="cancelEdit()">cancelar</a> • enter para <a (click)="saveEdit()">salvar</a></div>
+            </div>
+          } @else if (m.content) {
+            <div class="msg-content" [class.jumbo]="jumbo()" [innerHTML]="html()" (click)="contentClick($event)"></div>
+          }
 
-        @for (e of m.embeds; track $index) {
-          @if (e.type === 'image' && e.image) {
-            <div class="embed-image-only" (click)="ui.lightbox.set({ src: e.image, name: e.url })"><img [src]="e.image" alt="" loading="lazy" /></div>
-          } @else if (e.type === 'track') {
-            <a class="track-card" [href]="e.url" target="_blank" rel="noopener noreferrer">
-              @if (e.image) {
-                <img class="track-cover" [src]="e.image" alt="" loading="lazy" />
-              }
-              <span class="track-text">
-                @if (e.label) {
-                  <span class="track-label">{{ e.label }}</span>
-                }
-                <span class="track-title">{{ e.title }}</span>
-                <span class="track-sub">{{ e.siteName }}{{ e.description ? ' · ' + e.description : '' }}</span>
-              </span>
-            </a>
-          } @else if (e.type === 'link') {
-            <div class="embed" [style.border-left-color]="e.color || 'var(--bg-tertiary)'">
-              @if (e.siteName) {
-                <div class="embed-site">{{ e.siteName }}</div>
-              }
-              @if (e.title) {
-                <a class="embed-title" [href]="e.url" target="_blank" rel="noopener noreferrer">{{ e.title }}</a>
-              }
-              @if (e.description && !yt(e)) {
-                <div class="embed-desc">{{ e.description }}</div>
-              }
-              @if (yt(e); as vid) {
-                @if (playing() === vid) {
-                  <iframe class="embed-video" [src]="ytSrc(vid)" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+          @if (m.attachments.length || m.localFiles?.length) {
+            <div class="attachments">
+              @for (a of m.attachments; track a.key) {
+                @if (isImage(a.mime)) {
+                  <div class="att-image" [style.width.px]="size(a)?.width" [style.height.px]="size(a)?.height" (click)="openImage(a)">
+                    <img [src]="url(a)" [alt]="a.name" loading="lazy" />
+                  </div>
+                } @else if (isVideo(a.mime)) {
+                  <video class="att-video" [src]="url(a)" controls preload="metadata" [style.max-width.px]="400"></video>
+                } @else if (isAudio(a.mime)) {
+                  <div class="att-file audio">
+                    <div class="att-file-row">
+                      <app-icon name="file" [size]="32" />
+                      <div class="att-file-info">
+                        <a [href]="url(a)" target="_blank" rel="noopener">{{ a.name }}</a>
+                        <span>{{ formatSize(a.size) }}</span>
+                      </div>
+                    </div>
+                    <audio [src]="url(a)" controls preload="metadata"></audio>
+                  </div>
                 } @else {
-                  <div class="embed-video-thumb" (click)="playing.set(vid)">
-                    <img [src]="e.image || 'https://i.ytimg.com/vi/' + vid + '/hqdefault.jpg'" alt="" loading="lazy" />
-                    <span class="play-btn">▶</span>
+                  <div class="att-file">
+                    <div class="att-file-row">
+                      <app-icon name="file" [size]="32" />
+                      <div class="att-file-info">
+                        <a [href]="url(a)" target="_blank" rel="noopener">{{ a.name }}</a>
+                        <span>{{ formatSize(a.size) }}</span>
+                      </div>
+                      <a class="att-download" [href]="url(a)" [attr.download]="a.name" appTip="Baixar"><app-icon name="download" /></a>
+                    </div>
                   </div>
                 }
-              } @else if (e.image) {
-                <img class="embed-thumb" [src]="e.image" alt="" loading="lazy" (click)="ui.lightbox.set({ src: e.image, name: e.title || e.url })" />
+              }
+              @for (f of m.localFiles ?? []; track f.id) {
+                <div class="att-file uploading">
+                  <div class="att-file-row">
+                    <app-icon name="file" [size]="32" />
+                    <div class="att-file-info">
+                      <span class="att-name">{{ f.name }}</span>
+                      <div class="progress"><div class="progress-bar" [style.width.%]="(chat.uploadProgress()[f.id] || 0) * 100"></div></div>
+                    </div>
+                  </div>
+                </div>
               }
             </div>
           }
-        }
 
-        <!-- Balões: the time sits under each message, like WhatsApp (the classic list keeps it in the header). -->
-        <span class="msg-stamp" [appTip]="fullTime()">{{ timestamp() }}</span>
-
-        @if (m.reactions.length) {
-          <div class="reactions">
-            @for (r of m.reactions; track r.emoji) {
-              <button class="reaction" [class.me]="reacted(r)" (click)="toggleReaction(r.emoji)" [appTip]="reactors(r)">
-                <img class="emoji" [src]="emojiUrl(r.emoji)" [alt]="emojiLabel(r.emoji)" />
-                <span>{{ r.users.length }}</span>
-              </button>
+          @for (e of m.embeds; track $index) {
+            @if (e.type === 'image' && e.image) {
+              <div class="embed-image-only" (click)="ui.lightbox.set({ src: e.image, name: e.url })"><img [src]="e.image" alt="" loading="lazy" /></div>
+            } @else if (e.type === 'track') {
+              <a class="track-card" [href]="e.url" target="_blank" rel="noopener noreferrer">
+                @if (e.image) {
+                  <img class="track-cover" [src]="e.image" alt="" loading="lazy" />
+                }
+                <span class="track-text">
+                  @if (e.label) {
+                    <span class="track-label">{{ e.label }}</span>
+                  }
+                  <span class="track-title">{{ e.title }}</span>
+                  <span class="track-sub">{{ e.siteName }}{{ e.description ? ' · ' + e.description : '' }}</span>
+                </span>
+              </a>
+            } @else if (e.type === 'link') {
+              <div class="embed" [style.border-left-color]="e.color || 'var(--bg-tertiary)'">
+                @if (e.siteName) {
+                  <div class="embed-site">{{ e.siteName }}</div>
+                }
+                @if (e.title) {
+                  <a class="embed-title" [href]="e.url" target="_blank" rel="noopener noreferrer">{{ e.title }}</a>
+                }
+                @if (e.description && !yt(e)) {
+                  <div class="embed-desc">{{ e.description }}</div>
+                }
+                @if (yt(e); as vid) {
+                  @if (playing() === vid) {
+                    <iframe class="embed-video" [src]="ytSrc(vid)" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+                  } @else {
+                    <div class="embed-video-thumb" (click)="playing.set(vid)">
+                      <img [src]="e.image || 'https://i.ytimg.com/vi/' + vid + '/hqdefault.jpg'" alt="" loading="lazy" />
+                      <span class="play-btn">▶</span>
+                    </div>
+                  }
+                } @else if (e.image) {
+                  <img class="embed-thumb" [src]="e.image" alt="" loading="lazy" (click)="ui.lightbox.set({ src: e.image, name: e.title || e.url })" />
+                }
+              </div>
             }
-            <button class="reaction add" appTip="Adicionar reação" (click)="pickReaction($event)"><app-icon name="addReaction" [size]="16" /></button>
-          </div>
-        }
+          }
 
-        @if (m.failed) {
-          <div class="msg-failed">
-            Não foi possível enviar a mensagem.
-            <a (click)="chat.retry(m)">Tentar de novo</a> ·
-            <a (click)="discard()">Descartar</a>
-          </div>
-        }
+          <!-- Balões: the time sits under each message, like WhatsApp (the classic list keeps it in the header). -->
+          <span class="msg-stamp" [appTip]="fullTime()">{{ timestamp() }}</span>
 
-        @if (!m.pending && !editing()) {
-          <div class="msg-toolbar">
-            @for (e of quickReactions(); track e) {
-              <button class="quick-react" [appTip]="emojiLabel(e)" (click)="toggleReaction(e)"><img [src]="emojiUrl(e)" [alt]="emojiLabel(e)" /></button>
-            }
-            <span class="tb-sep"></span>
-            <button appTip="Adicionar reação" (click)="pickReaction($event)"><app-icon name="addReaction" [size]="18" /></button>
-            @if (isMine()) {
-              <button appTip="Editar" (click)="startEdit()"><app-icon name="editText" [size]="18" /></button>
-            } @else {
-              <button appTip="Responder" (click)="reply()"><app-icon name="reply" [size]="18" /></button>
-            }
-            <button appTip="Mais" (click)="menu($event)"><app-icon name="more" [size]="18" /></button>
-          </div>
-        }
+          @if (m.reactions.length) {
+            <div class="reactions">
+              @for (r of m.reactions; track r.emoji) {
+                <button class="reaction" [class.me]="reacted(r)" (click)="toggleReaction(r.emoji)" [appTip]="reactors(r)">
+                  <img class="emoji" [src]="emojiUrl(r.emoji)" [alt]="emojiLabel(r.emoji)" />
+                  <span>{{ r.users.length }}</span>
+                </button>
+              }
+              <button class="reaction add" appTip="Adicionar reação" (click)="pickReaction($event)"><app-icon name="addReaction" [size]="16" /></button>
+            </div>
+          }
+
+          @if (m.failed) {
+            <div class="msg-failed">
+              Não foi possível enviar a mensagem.
+              <a (click)="chat.retry(m)">Tentar de novo</a> ·
+              <a (click)="discard()">Descartar</a>
+            </div>
+          }
+
+          @if (!m.pending && !editing()) {
+            <div class="msg-toolbar">
+              @for (e of quickReactions(); track e) {
+                <button class="quick-react" [appTip]="emojiLabel(e)" (click)="toggleReaction(e)"><img [src]="emojiUrl(e)" [alt]="emojiLabel(e)" /></button>
+              }
+              <span class="tb-sep"></span>
+              <button appTip="Adicionar reação" (click)="pickReaction($event)"><app-icon name="addReaction" [size]="18" /></button>
+              @if (isMine()) {
+                <button appTip="Editar" (click)="startEdit()"><app-icon name="editText" [size]="18" /></button>
+              } @else {
+                <button appTip="Responder" (click)="reply()"><app-icon name="reply" [size]="18" /></button>
+              }
+              <button appTip="Mais" (click)="menu($event)"><app-icon name="more" [size]="18" /></button>
+            </div>
+          }
+        </div>
       </div>
     }
   `,

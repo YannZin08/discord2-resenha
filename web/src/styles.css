@@ -6491,6 +6491,30 @@ img.emoji.custom {
 :where(:root[data-msg='bubbles']) .message .msg-edit {
   align-self: stretch;
 }
+/* Classic list: the wrapper isn't a box, so the hover bar stays at the right of the row. */
+.msg-body {
+  display: contents;
+}
+/* Balões: the wrapper hugs the message, so the hover bar floats over the bubble's top right. */
+:where(:root[data-msg='bubbles']) .message:not(.system) .msg-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: inherit;
+  max-width: 100%;
+}
+/* Someone else's message narrower than the bar (~210px): the bar starts at the bubble's left
+   instead of running over the avatar. Yours have room on the left, so the bar stays at the right. */
+:where(:root[data-msg='bubbles']) .message .msg-body > .msg-toolbar {
+  top: -30px;
+  right: min(-6px, 100% - 216px);
+}
+:where(:root[data-msg='bubbles']) .message.mine .msg-body > .msg-toolbar {
+  right: -6px;
+}
+:where(:root[data-msg='bubbles']) .message .msg-body > .msg-edit {
+  align-self: stretch;
+}
 /* The time goes under each message, small, like WhatsApp; the header keeps only the name. */
 .msg-stamp {
   display: none;
