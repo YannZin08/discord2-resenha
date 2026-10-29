@@ -1083,10 +1083,14 @@ app-server-rail {
 .rail-btn.home {
   color: var(--text-normal);
 }
-/* The red symbol sits on white when highlighted (like the logo), not on the accent color. */
+/* The home button is just the red symbol: no tile behind it, highlighted or not. */
+.rail-btn.home,
 .rail-btn.home:hover,
-.rail-item.active .rail-btn.home {
-  background: #fff;
+.rail-item.active .rail-btn.home,
+:where(:root[data-theme]) .rail-btn.home,
+:where(:root[data-theme]) .rail-btn.home:hover,
+:where(:root[data-theme]) .rail-item.active .rail-btn.home {
+  background: transparent;
 }
 .rail-btn.add {
   color: var(--green);
