@@ -66,6 +66,8 @@ export interface Guild {
   icon: string | null;
   ownerId: number;
   systemChannelId: number | null;
+  /** With the music bot, its commands only work in this channel (null: any channel). */
+  musicChannelId?: number | null;
   createdAt?: number;
   /** The server's own emojis; everyone can use them in any chat. */
   emojis?: CustomEmoji[];
@@ -151,7 +153,7 @@ export interface MessageRef {
   deleted?: boolean;
 }
 
-export type MessageType = 'default' | 'join' | 'call' | 'pin';
+export type MessageType = 'default' | 'join' | 'leave' | 'call' | 'pin';
 
 export interface Message {
   id: number;

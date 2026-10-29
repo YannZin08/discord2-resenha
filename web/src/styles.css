@@ -2064,6 +2064,9 @@ app-dm-sidebar {
 .system-join {
   color: var(--green);
 }
+.system-leave {
+  color: var(--red);
+}
 .system-call {
   color: var(--green);
 }

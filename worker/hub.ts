@@ -142,6 +142,7 @@ const MIGRATIONS = [
   'ALTER TABLE users ADD COLUMN theme_colors TEXT',
   'ALTER TABLE users ADD COLUMN activity TEXT',
   'ALTER TABLE users ADD COLUMN activity_token TEXT',
+  'ALTER TABLE guilds ADD COLUMN music_channel_id INTEGER',
 ];
 
 /** How long a game the detector reported stays up without a new report. */
@@ -517,6 +518,7 @@ export class Hub extends DurableObject<Env> {
       icon: g.icon,
       ownerId: g.owner_id,
       systemChannelId: g.system_channel_id,
+      musicChannelId: g.music_channel_id ?? null,
       createdAt: g.created_at,
       emojis: this.guildEmojis(gid),
       sounds: this.soundList(gid),
@@ -1463,27 +1465,31 @@ export class Hub extends DurableObject<Env> {
     const name = str(b.name, 'Nome do servidor', 1, 100);
     const icon = b.icon ? this.ownedUpload(b.icon, c.uid, true) : null;
     const gid = newId();
-    const [catText, general, catVoice, voice] = [newId(), newId(), newId(), newId()];
+    // Joins and leaves get their own channel, and music commands another, so #geral stays for talking.
+    const [catText, general, entries, music, catVoice, voice] = [newId(), newId(), newId(), newId(), newId(), newId()];
     const now = Date.now();
     this.tx(() => {
       this.run(
-        'INSERT INTO guilds (id, name, icon, owner_id, system_channel_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO guilds (id, name, icon, owner_id, system_channel_id, music_channel_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         gid,
         name,
         icon,
         c.uid,
-        general,
+        entries,
+        music,
         now,
       );
       this.run('INSERT INTO members (guild_id, user_id, joined_at) VALUES (?, ?, ?)', gid, c.uid, now);
-      const ins = 'INSERT INTO channels (id, guild_id, type, name, parent_id, position) VALUES (?, ?, ?, ?, ?, ?)';
-      this.run(ins, catText, gid, 'category', 'Canais de texto', null, 0);
-      this.run(ins, general, gid, 'text', 'geral', catText, 0);
-      this.run(ins, catVoice, gid, 'category', 'Canais de voz', null, 1);
-      this.run(ins, voice, gid, 'voice', 'Geral', catVoice, 0);
+      const ins = 'INSERT INTO channels (id, guild_id, type, name, topic, parent_id, position) VALUES (?, ?, ?, ?, ?, ?, ?)';
+      this.run(ins, catText, gid, 'category', 'Canais de texto', '', null, 0);
+      this.run(ins, general, gid, 'text', 'geral', '', catText, 0);
+      this.run(ins, entries, gid, 'text', 'entradas-e-saídas', 'Quem entra e quem sai do servidor.', catText, 1);
+      this.run(ins, music, gid, 'text', 'música', 'Comandos do bot de música: /tocar, /pular, /fila…', catText, 2);
+      this.run(ins, catVoice, gid, 'category', 'Canais de voz', '', null, 1);
+      this.run(ins, voice, gid, 'voice', 'Geral', '', catVoice, 0);
     });
     this.sendGuildCreate(c.uid, gid);
-    return { id: gid, systemChannelId: general };
+    return { id: gid, systemChannelId: entries, musicChannelId: music, channelId: general };
   }
 
   private async updateGuild(c: Ctx) {
@@ -1498,16 +1504,26 @@ export class Hub extends DurableObject<Env> {
       ownerId = toId(b.ownerId);
       if (!this.isMember(gid, ownerId)) throw new HttpError(400, 'Essa pessoa não está no servidor.');
     }
-    let systemChannelId = g.system_channel_id;
-    if (b.systemChannelId !== undefined) {
-      systemChannelId = b.systemChannelId === null ? null : toId(b.systemChannelId);
-      if (systemChannelId && !this.one("SELECT 1 FROM channels WHERE id = ? AND guild_id = ? AND type = 'text'", systemChannelId, gid)) {
-        throw new HttpError(400, 'Canal inválido.');
-      }
-    }
-    this.run('UPDATE guilds SET name = ?, icon = ?, owner_id = ?, system_channel_id = ? WHERE id = ?', name, icon, ownerId, systemChannelId, gid);
+    const textChannel = (v: unknown, current: number | null) => {
+      if (v === undefined) return current;
+      if (v === null) return null;
+      const id = toId(v);
+      if (!this.one("SELECT 1 FROM channels WHERE id = ? AND guild_id = ? AND type = 'text'", id, gid)) throw new HttpError(400, 'Canal inválido.');
+      return id;
+    };
+    const systemChannelId = textChannel(b.systemChannelId, g.system_channel_id);
+    const musicChannelId = textChannel(b.musicChannelId, g.music_channel_id ?? null);
+    this.run(
+      'UPDATE guilds SET name = ?, icon = ?, owner_id = ?, system_channel_id = ?, music_channel_id = ? WHERE id = ?',
+      name,
+      icon,
+      ownerId,
+      systemChannelId,
+      musicChannelId,
+      gid,
+    );
     if (g.icon !== icon) this.releaseFiles([g.icon]);
-    const out = { id: gid, name, icon, ownerId, systemChannelId };
+    const out = { id: gid, name, icon, ownerId, systemChannelId, musicChannelId };
     this.broadcast(this.guildMembers(gid), 'GUILD_UPDATE', out);
     return out;
   }
@@ -1786,6 +1802,10 @@ export class Hub extends DurableObject<Env> {
     });
     this.broadcast([uid], 'GUILD_DELETE', { id: gid });
     this.broadcast(this.guildMembers(gid), 'GUILD_MEMBER_REMOVE', { guildId: gid, userId: uid });
+    // People (not bots) leaving, kicked or banned show up in the joins channel, like their arrival did.
+    const g = this.one('SELECT system_channel_id FROM guilds WHERE id = ?', gid);
+    const sys = g?.system_channel_id ? this.one('SELECT * FROM channels WHERE id = ?', g.system_channel_id) : null;
+    if (sys && !this.one('SELECT bot FROM users WHERE id = ?', uid)?.bot) this.createMessage(sys, uid, { type: 'leave' });
   }
 
   private leaveGuild(c: Ctx) {
@@ -1993,11 +2013,20 @@ export class Hub extends DurableObject<Env> {
         const next = this.one("SELECT id FROM channels WHERE guild_id = ? AND type = 'text' ORDER BY position, id", gid);
         this.run('UPDATE guilds SET system_channel_id = ? WHERE id = ?', next?.id ?? null, gid);
       }
+      // Without its music channel, the commands work in any channel again.
+      this.run('UPDATE guilds SET music_channel_id = NULL WHERE id = ? AND music_channel_id = ?', gid, ch.id);
     });
     this.broadcast(members, 'CHANNEL_DELETE', { id: ch.id, guildId: gid });
     for (const id of orphans) this.broadcast(members, 'CHANNEL_UPDATE', { channel: this.chan(this.one('SELECT * FROM channels WHERE id = ?', id)!) });
     const g = this.one('SELECT * FROM guilds WHERE id = ?', gid)!;
-    this.broadcast(members, 'GUILD_UPDATE', { id: gid, name: g.name, icon: g.icon, ownerId: g.owner_id, systemChannelId: g.system_channel_id });
+    this.broadcast(members, 'GUILD_UPDATE', {
+      id: gid,
+      name: g.name,
+      icon: g.icon,
+      ownerId: g.owner_id,
+      systemChannelId: g.system_channel_id,
+      musicChannelId: g.music_channel_id ?? null,
+    });
     return { ok: true };
   }
 
@@ -2264,17 +2293,22 @@ export class Hub extends DurableObject<Env> {
       return { key: up.key, name: up.name, size: up.size, mime: up.mime, width: dim(a.width), height: dim(a.height) };
     });
     if (!content && !attachments.length) throw new HttpError(400, 'A mensagem está vazia.');
+    const command = ch.guild_id != null ? parseCommand(content) : null;
+    const botId = this.musicBot(false);
+    const forBot = !!command && !!botId && c.uid !== botId && this.isMember(ch.guild_id, botId);
+    // A server with a music channel only takes the commands there.
+    if (forBot) {
+      const musicId = this.one('SELECT music_channel_id FROM guilds WHERE id = ?', ch.guild_id)?.music_channel_id;
+      const musicCh = musicId && musicId !== ch.id ? this.one('SELECT name FROM channels WHERE id = ?', musicId) : null;
+      if (musicCh) throw new HttpError(400, `Os comandos de música só funcionam no canal #${musicCh.name}.`);
+    }
     const msg = this.createMessage(ch, c.uid, {
       content,
       attachments,
       replyTo: b.replyTo != null ? toId(b.replyTo) : null,
       nonce: typeof b.nonce === 'string' ? b.nonce.slice(0, 64) : null,
     });
-    const command = ch.guild_id != null ? parseCommand(content) : null;
-    const botId = this.musicBot(false);
-    if (command && botId && c.uid !== botId && this.isMember(ch.guild_id, botId)) {
-      this.ctx.waitUntil(this.musicCommand(ch, c.uid, command).catch((e) => console.error('music command failed', e)));
-    }
+    if (forBot) this.ctx.waitUntil(this.musicCommand(ch, c.uid, command!).catch((e) => console.error('music command failed', e)));
     return msg;
   }
 

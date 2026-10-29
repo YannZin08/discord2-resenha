@@ -26,6 +26,12 @@ const MUSIC_COMMANDS = [
   { name: 'ajuda', description: 'Lista os comandos' },
 ];
 
+/** Every name the music bot answers to (worker/music.ts ALIASES). */
+const MUSIC_ALIASES = new Set([
+  ...MUSIC_COMMANDS.map((c) => c.name),
+  ...['play', 'p', 'skip', 's', 'proxima', 'próxima', 'pause', 'resume', 'retomar', 'stop', 'sair', 'leave', 'queue', 'q', 'np', 'agora', 'help', 'musica', 'música'],
+]);
+
 interface Suggestion {
   key: string;
   label: string;
@@ -154,6 +160,13 @@ export class Composer {
     });
   });
 
+  /** The server's music channel when it isn't this one: the bot's commands only work there. */
+  readonly musicElsewhere = computed(() => {
+    const c = this.channel();
+    const mid = c.guildId != null ? this.store.guilds()[c.guildId]?.musicChannelId : null;
+    return this.hasMusicBot() && mid != null && mid !== c.id ? (this.store.channels()[mid] ?? null) : null;
+  });
+
   readonly blocked = computed(() => {
     const p = this.store.dmPartner(this.channel());
     return p ? this.store.relationships()[p.id] === 'blocked' : false;
@@ -251,7 +264,7 @@ export class Composer {
     const caret = el.selectionStart ?? this.text().length;
     const before = this.text().slice(0, caret);
     const slash = before.match(/^\/([\p{L}]*)$/u);
-    if (slash && this.hasMusicBot()) {
+    if (slash && this.hasMusicBot() && !this.musicElsewhere()) {
       const q = slash[1].toLowerCase();
       const list = MUSIC_COMMANDS.filter((c) => c.name.startsWith(q)).map((c) => ({
         key: 'cmd' + c.name,
@@ -456,6 +469,12 @@ export class Composer {
     if (!raw && !files.length) return;
     if (raw.length > MAX) {
       this.ui.toast(`A mensagem pode ter no máximo ${MAX} caracteres.`, 'error');
+      return;
+    }
+    const music = this.musicElsewhere();
+    const cmd = raw.match(/^[/!]([\p{L}]+)/u)?.[1].toLowerCase();
+    if (music && cmd && MUSIC_ALIASES.has(cmd)) {
+      this.ui.toast(`Os comandos de música só funcionam no canal #${music.name}.`, 'error');
       return;
     }
     const me = this.store.me()!;

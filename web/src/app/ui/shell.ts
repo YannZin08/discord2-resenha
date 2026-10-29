@@ -87,7 +87,6 @@ export class Shell {
           const list = this.store.guildChannels(gid);
           const pick =
             (last && channels[last]?.guildId === gid && channels[last].type === 'text' ? channels[last] : null) ??
-            list.find((x) => x.id === this.store.guilds()[gid].systemChannelId) ??
             list.find((x) => x.type === 'text');
           if (pick) this.nav.go(`/channels/${gid}/${pick.id}`, true);
           else if (cid != null) this.nav.go(`/channels/${gid}`, true);

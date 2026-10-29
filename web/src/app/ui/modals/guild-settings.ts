@@ -80,7 +80,15 @@ const ROLE_COLORS = ['#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1
                     <option [ngValue]="c.id">#{{ c.name }}</option>
                   }
                 </select>
-                <p class="hint">É aqui que avisamos quando alguém entra no servidor.</p>
+                <p class="hint">É aqui que avisamos quando alguém entra ou sai do servidor.</p>
+                <label class="field-label">Canal de música</label>
+                <select class="input" [(ngModel)]="musicChannelId">
+                  <option [ngValue]="null">Qualquer canal</option>
+                  @for (c of textChannels(); track c.id) {
+                    <option [ngValue]="c.id">#{{ c.name }}</option>
+                  }
+                </select>
+                <p class="hint">Os comandos do bot de música (/tocar, /pular, /fila…) só funcionam neste canal.</p>
                 <div class="settings-actions">
                   <button class="btn btn-success" [disabled]="busy()" (click)="saveOverview()">Salvar alterações</button>
                 </div>
@@ -308,6 +316,7 @@ export class GuildSettings {
   private iconKey: string | null | undefined = undefined;
   name = '';
   systemChannelId: number | null = null;
+  musicChannelId: number | null = null;
 
   readonly members = computed(() => {
     const q = this.memberFilter().toLowerCase();
@@ -323,6 +332,7 @@ export class GuildSettings {
     if (!g) return;
     this.name = g.name;
     this.systemChannelId = g.systemChannelId;
+    this.musicChannelId = g.musicChannelId ?? null;
     this.iconPreview.set(g.icon ? fileUrl(g.icon, 'icon') : null);
   }
 
@@ -346,7 +356,7 @@ export class GuildSettings {
   async saveOverview() {
     this.busy.set(true);
     try {
-      const body: Record<string, unknown> = { name: this.name, systemChannelId: this.systemChannelId };
+      const body: Record<string, unknown> = { name: this.name, systemChannelId: this.systemChannelId, musicChannelId: this.musicChannelId };
       if (this.iconKey !== undefined) body['icon'] = this.iconKey;
       await this.api.patch(`/guilds/${this.guildId()}`, body);
       this.ui.toast('Alterações salvas.', 'success');

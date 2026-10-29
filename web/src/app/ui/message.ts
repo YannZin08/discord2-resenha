@@ -40,6 +40,8 @@ const JOIN_LINES = [
   '{u} entrou na festa.',
 ];
 
+const LEAVE_LINES = ['{u} saiu do servidor.', '{u} foi embora da resenha.', '{u} deu tchau.', '{u} saiu de fininho.'];
+
 /** Converts stored <@id> mentions back to editable @username text. */
 export function toEditable(content: string, store: Store): string {
   return content
@@ -114,6 +116,9 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
             @case ('join') {
               <app-icon name="arrowRight" [size]="16" />
             }
+            @case ('leave') {
+              <app-icon name="logout" [size]="16" />
+            }
             @case ('call') {
               <app-icon name="phone" [size]="16" />
             }
@@ -125,6 +130,9 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
         <div class="system-text">
           @switch (m.type) {
             @case ('join') {
+              <span [innerHTML]="joinHtml()"></span>
+            }
+            @case ('leave') {
               <span [innerHTML]="joinHtml()"></span>
             }
             @case ('call') {
@@ -395,7 +403,8 @@ export class MessageItem {
   });
   readonly joinHtml = computed<SafeHtml>(() => {
     const m = this.message();
-    const line = JOIN_LINES[Math.floor(m.id / 4096) % JOIN_LINES.length];
+    const lines = m.type === 'leave' ? LEAVE_LINES : JOIN_LINES;
+    const line = lines[Math.floor(m.id / 4096) % lines.length];
     const name = `<a class="msg-author-inline" data-user="${m.authorId}">${escapeHtml(this.authorName())}</a>`;
     return this.sanitizer.bypassSecurityTrustHtml(escapeHtml(line).replace('{u}', name));
   });

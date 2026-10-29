@@ -118,9 +118,9 @@ export class CreateGuild {
     try {
       let icon: string | null = null;
       if (this.icon) icon = (await this.api.upload(this.icon, 'icon.png')).key;
-      const g = await this.api.post<{ id: number; systemChannelId: number }>('/guilds', { name: this.name, icon });
+      const g = await this.api.post<{ id: number; channelId: number }>('/guilds', { name: this.name, icon });
       this.ui.close();
-      this.nav.go(`/channels/${g.id}/${g.systemChannelId}`);
+      this.nav.go(`/channels/${g.id}/${g.channelId}`);
     } catch (e) {
       this.error.set(e instanceof Error ? e.message : String(e));
     } finally {
