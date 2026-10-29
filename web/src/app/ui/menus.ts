@@ -236,6 +236,17 @@ export function userMenuItems(
     const targetIsOwner = store.isOwner(guildId, userId);
     if (admin && userId !== me && !targetIsOwner && (owner || !store.isAdmin(guildId, userId))) {
       const name = store.nameIn(guildId, userId);
+      // In a call on this server: mute / deafen them for everyone (red icons, they can't undo it).
+      const call = Object.values(store.voiceStates()).find((v) => v.userId === userId && v.guildId === guildId && v.channelId != null && !v.bot);
+      if (call) {
+        const setVoice = (body: { mute?: boolean; deaf?: boolean }) =>
+          api.patch(`/guilds/${guildId}/members/${userId}/voice`, body).catch((e) => ui.error(e));
+        items.push(
+          { separator: true },
+          { label: 'Silenciar no servidor', checked: !!call.serverMute, action: () => void setVoice({ mute: !call.serverMute }) },
+          { label: 'Ensurdecer no servidor', checked: !!call.serverDeaf, action: () => void setVoice({ deaf: !call.serverDeaf }) },
+        );
+      }
       items.push(
         { separator: true },
         {

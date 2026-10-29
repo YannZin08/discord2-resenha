@@ -216,6 +216,9 @@ export interface VoiceState {
   guildId: number | null;
   mute: boolean;
   deaf: boolean;
+  /** Muted / deafened by an admin of the server (not by themselves). */
+  serverMute?: boolean;
+  serverDeaf?: boolean;
   video: boolean;
   stream: boolean;
   /** Session id of the stream this person is watching. */

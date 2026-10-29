@@ -94,10 +94,18 @@ interface Group {
                       @if (v.video) {
                         <app-icon name="video" [size]="16" />
                       }
-                      @if (v.deaf) {
-                        <app-icon class="red" name="headsetOff" [size]="16" />
-                      } @else if (v.mute) {
-                        <app-icon class="red" name="micOff" [size]="16" />
+                      <!-- Gray when they did it themselves, red when an admin did; deafened shows both. -->
+                      @if (v.mute || v.deaf || v.serverMute || v.serverDeaf) {
+                        <app-icon
+                          class="vu-state"
+                          [class.red]="v.serverMute || v.serverDeaf"
+                          name="micOff"
+                          [size]="16"
+                          [appTip]="v.serverMute || v.serverDeaf ? 'Silenciado pelo servidor' : 'Microfone desligado'"
+                        />
+                      }
+                      @if (v.deaf || v.serverDeaf) {
+                        <app-icon class="vu-state" [class.red]="v.serverDeaf" name="headsetOff" [size]="16" [appTip]="v.serverDeaf ? 'Ensurdecido pelo servidor' : 'Áudio desligado'" />
                       }
                     </div>
                   }

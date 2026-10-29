@@ -181,6 +181,13 @@ export class Voice {
   readonly active = signal(false);
   readonly mute = signal(false);
   readonly deaf = signal(false);
+  /** Muted / deafened by a server admin: on top of our own mute, and we can't undo it. */
+  readonly serverMute = computed(() => !!this.myState()?.serverMute);
+  readonly serverDeaf = computed(() => !!this.myState()?.serverDeaf);
+  private myState = computed(() => {
+    const sid = this.store.sessionId();
+    return sid ? this.store.voiceStates()[sid] : undefined;
+  });
   readonly localCamera = signal<MediaStream | null>(null);
   readonly localScreen = signal<MediaStream | null>(null);
   readonly speaking = signal<ReadonlySet<number>>(new Set());
@@ -263,6 +270,16 @@ export class Voice {
       const states = this.store.voiceStates();
       const channelId = this.active() ? this.channelId() : null;
       untracked(() => this.onCallChange(states, channelId));
+    });
+
+    // An admin muting or deafening us takes effect right away (and lifting it, too).
+    effect(() => {
+      this.serverMute();
+      this.serverDeaf();
+      untracked(() => {
+        this.applyMute();
+        this.applyOutput();
+      });
     });
 
     gateway.onOp('rtc', (msg) => this.onSignal(msg.from, msg.fromUser, msg.data));
@@ -660,7 +677,7 @@ export class Voice {
   }
 
   private applyMute() {
-    const on = !this.mute() && !this.deaf();
+    const on = !this.mute() && !this.deaf() && !this.serverMute() && !this.serverDeaf();
     this.mic?.getAudioTracks().forEach((t) => (t.enabled = on));
   }
 
@@ -674,7 +691,7 @@ export class Voice {
         [p.screenAudio, this.streamVolume(p.userId)],
       ];
       for (const [el, level] of levels) {
-        el.muted = this.deaf() || level === 0;
+        el.muted = this.deaf() || this.serverDeaf() || level === 0;
         el.volume = Math.min(1, (level / 100) * out);
         const withSink = el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
         if (withSink.setSinkId && sink) withSink.setSinkId(sink === 'default' ? '' : sink).catch(() => undefined);
@@ -722,7 +739,7 @@ export class Voice {
     for (const id of this.externalSpeakers) next.add(id);
     // Your own ring comes straight from the voice gate: only while your voice is really going out.
     const me = this.store.me()?.id;
-    if (me != null && this.pipe?.level.speaking && !this.mute() && !this.deaf()) next.add(me);
+    if (me != null && this.pipe?.level.speaking && !this.mute() && !this.deaf() && !this.serverMute() && !this.serverDeaf()) next.add(me);
     const cur = this.speaking();
     if (next.size !== cur.size || [...next].some((u) => !cur.has(u))) this.speaking.set(next);
   }

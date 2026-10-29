@@ -314,6 +314,14 @@ img.emoji {
 .red {
   color: var(--red);
 }
+/* Mic / headset off next to someone in the call: gray when it's their own choice. */
+.vu-state {
+  flex: none;
+  color: var(--interactive-normal);
+}
+.vu-state.red {
+  color: var(--red);
+}
 .spacer {
   flex: 1;
 }

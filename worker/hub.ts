@@ -156,6 +156,8 @@ const MIGRATIONS = [
   'ALTER TABLE users ADD COLUMN activity_token TEXT',
   'ALTER TABLE guilds ADD COLUMN music_channel_id INTEGER',
   'ALTER TABLE users ADD COLUMN profile TEXT',
+  'ALTER TABLE members ADD COLUMN server_mute INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE members ADD COLUMN server_deaf INTEGER NOT NULL DEFAULT 0',
 ];
 
 /** How long a game the detector reported stays up without a new report. */
@@ -342,6 +344,7 @@ export class Hub extends DurableObject<Env> {
     r('POST', '/api/guilds/:guildId/ack', (c) => this.ackGuild(c));
     r('DELETE', '/api/guilds/:guildId/members/@me', (c) => this.leaveGuild(c));
     r('PATCH', '/api/guilds/:guildId/members/:userId', (c) => this.updateMember(c));
+    r('PATCH', '/api/guilds/:guildId/members/:userId/voice', (c) => this.serverVoice(c));
     r('DELETE', '/api/guilds/:guildId/members/:userId', (c) => this.kick(c));
     r('GET', '/api/guilds/:guildId/bans', (c) => this.listBans(c));
     r('PUT', '/api/guilds/:guildId/bans/:userId', (c) => this.ban(c));
@@ -797,6 +800,8 @@ export class Hub extends DurableObject<Env> {
   }
 
   private voiceState(att: Att, v: VoiceAtt | null) {
+    // Muted or deafened by an admin of the server (kept on the member, like Discord's server mute).
+    const m = v?.guildId != null ? this.one('SELECT server_mute, server_deaf FROM members WHERE guild_id = ? AND user_id = ?', v.guildId, att.uid) : null;
     return {
       userId: att.uid,
       sessionId: att.sid,
@@ -804,10 +809,30 @@ export class Hub extends DurableObject<Env> {
       guildId: v?.guildId ?? null,
       mute: v?.mute ?? false,
       deaf: v?.deaf ?? false,
+      serverMute: !!m?.server_mute,
+      serverDeaf: !!m?.server_deaf,
       video: v?.video ?? false,
       stream: v?.stream ?? false,
       watching: v?.watching ?? null,
     };
+  }
+
+  /** PATCH …/members/:userId/voice: an admin mutes or deafens someone for the whole server. */
+  private async serverVoice(c: Ctx) {
+    const { gid, tid } = this.moderationTarget(c);
+    if (!this.isMember(gid, tid)) throw new HttpError(404, 'Membro não encontrado.');
+    const b = await c.body();
+    const cur = this.one('SELECT server_mute, server_deaf FROM members WHERE guild_id = ? AND user_id = ?', gid, tid)!;
+    const mute = b.mute !== undefined ? (b.mute ? 1 : 0) : cur.server_mute;
+    const deaf = b.deaf !== undefined ? (b.deaf ? 1 : 0) : cur.server_deaf;
+    this.run('UPDATE members SET server_mute = ?, server_deaf = ? WHERE guild_id = ? AND user_id = ?', mute, deaf, gid, tid);
+    for (const ws of this.live()) {
+      const att = this.attOf(ws);
+      if (att?.uid !== tid || att.voice?.guildId !== gid) continue;
+      const ch = this.one('SELECT * FROM channels WHERE id = ?', att.voice.channelId);
+      if (ch) this.broadcast(this.audience(ch), 'VOICE_STATE_UPDATE', this.voiceState(att, att.voice));
+    }
+    return { serverMute: !!mute, serverDeaf: !!deaf };
   }
 
   private broadcastVoiceLeave(att: Att, prev: VoiceAtt) {

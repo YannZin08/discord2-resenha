@@ -17,6 +17,8 @@ interface Tile {
   self: boolean;
   mute: boolean;
   deaf: boolean;
+  serverMute: boolean;
+  serverDeaf: boolean;
   /** Screen tiles: whether we watch this stream, and who does. */
   watching: boolean;
   viewers: number[];
@@ -94,10 +96,11 @@ interface Tile {
               }
               <span>{{ store.nameIn(channel().guildId, t.userId) }}</span>
               @if (t.kind === 'user') {
-                @if (t.deaf) {
-                  <app-icon name="headsetOff" [size]="14" />
-                } @else if (t.mute) {
-                  <app-icon name="micOff" [size]="14" />
+                @if (t.mute || t.deaf || t.serverMute || t.serverDeaf) {
+                  <app-icon [class.red]="t.serverMute || t.serverDeaf" name="micOff" [size]="14" />
+                }
+                @if (t.deaf || t.serverDeaf) {
+                  <app-icon [class.red]="t.serverDeaf" name="headsetOff" [size]="14" />
                 }
               }
             </div>
@@ -151,7 +154,7 @@ export class VoiceStage {
     for (const v of inCall) {
       const self = v.userId === me && v.sessionId === this.store.sessionId();
       const cam = self ? this.voice.localCamera() : v.video ? (remote[v.sessionId]?.camera ?? null) : null;
-      const base = { sessionId: v.sessionId, userId: v.userId, self, mute: v.mute, deaf: v.deaf, watching: false, viewers: [] as number[] };
+      const base = { sessionId: v.sessionId, userId: v.userId, self, mute: v.mute, deaf: v.deaf, serverMute: !!v.serverMute, serverDeaf: !!v.serverDeaf, watching: false, viewers: [] as number[] };
       out.push({ ...base, key: v.sessionId, kind: 'user', stream: cam });
       if (!v.stream) continue;
       const watched = !self && watching === v.sessionId;

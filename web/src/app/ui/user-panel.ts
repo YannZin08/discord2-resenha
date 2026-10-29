@@ -60,11 +60,22 @@ import { Tip } from './tooltip';
             </div>
           </div>
         </div>
-        <button class="icon-btn" [class.danger]="voice.mute() || voice.deaf()" [appTip]="voice.mute() || voice.deaf() ? 'Ativar microfone' : 'Silenciar'" (click)="voice.toggleMute()">
-          <app-icon [name]="voice.mute() || voice.deaf() ? 'micOff' : 'mic'" [size]="20" />
+        <!-- Red only when an admin muted / deafened you; your own toggles just show the crossed icon. -->
+        <button
+          class="icon-btn"
+          [class.danger]="voice.serverMute() || voice.serverDeaf()"
+          [appTip]="voice.serverMute() || voice.serverDeaf() ? 'Um administrador silenciou você' : voice.mute() || voice.deaf() ? 'Ativar microfone' : 'Silenciar'"
+          (click)="voice.toggleMute()"
+        >
+          <app-icon [name]="voice.mute() || voice.deaf() || voice.serverMute() || voice.serverDeaf() ? 'micOff' : 'mic'" [size]="20" />
         </button>
-        <button class="icon-btn" [class.danger]="voice.deaf()" [appTip]="voice.deaf() ? 'Ativar áudio' : 'Ensurdecer'" (click)="voice.toggleDeaf()">
-          <app-icon [name]="voice.deaf() ? 'headsetOff' : 'headset'" [size]="20" />
+        <button
+          class="icon-btn"
+          [class.danger]="voice.serverDeaf()"
+          [appTip]="voice.serverDeaf() ? 'Um administrador ensurdeceu você' : voice.deaf() ? 'Ativar áudio' : 'Ensurdecer'"
+          (click)="voice.toggleDeaf()"
+        >
+          <app-icon [name]="voice.deaf() || voice.serverDeaf() ? 'headsetOff' : 'headset'" [size]="20" />
         </button>
         <button class="icon-btn" appTip="Configurações de usuário" (click)="ui.open(settings)"><app-icon name="gear" [size]="20" /></button>
       </div>
