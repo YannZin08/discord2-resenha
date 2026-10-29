@@ -2,7 +2,10 @@
 
 export interface Embed {
   url: string;
-  type: 'link' | 'image' | 'video';
+  /** `track`: Nox's compact song card (small cover, label, title, artist · who asked). */
+  type: 'link' | 'image' | 'video' | 'track';
+  /** Small line above a track's title: "Tocando agora", "Na fila · 2º"… */
+  label?: string;
   title?: string;
   description?: string;
   siteName?: string;

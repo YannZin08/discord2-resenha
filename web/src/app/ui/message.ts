@@ -154,6 +154,7 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
         [id]="'msg-' + m.id"
         [class.grouped]="grouped()"
         [class.mine]="isMine()"
+        [class.nox]="m.authorId === store.musicBotId()"
         [class.fresh]="fresh()"
         [class.mentioned]="mentioned()"
         [class.pending]="m.pending && !m.failed"
@@ -257,6 +258,19 @@ export function toWire(text: string, store: Store, guildId: number | null, recip
         @for (e of m.embeds; track $index) {
           @if (e.type === 'image' && e.image) {
             <div class="embed-image-only" (click)="ui.lightbox.set({ src: e.image, name: e.url })"><img [src]="e.image" alt="" loading="lazy" /></div>
+          } @else if (e.type === 'track') {
+            <a class="track-card" [href]="e.url" target="_blank" rel="noopener noreferrer">
+              @if (e.image) {
+                <img class="track-cover" [src]="e.image" alt="" loading="lazy" />
+              }
+              <span class="track-text">
+                @if (e.label) {
+                  <span class="track-label">{{ e.label }}</span>
+                }
+                <span class="track-title">{{ e.title }}</span>
+                <span class="track-sub">{{ e.siteName }}{{ e.description ? ' · ' + e.description : '' }}</span>
+              </span>
+            </a>
           } @else if (e.type === 'link') {
             <div class="embed" [style.border-left-color]="e.color || 'var(--bg-tertiary)'">
               @if (e.siteName) {
