@@ -35,6 +35,8 @@ export interface ProfilePopout {
   x: number;
   y: number;
   side: 'right' | 'left';
+  /** Opened from the call list in the sidebar: no "Em voz" and no "Membro desde". */
+  compact?: boolean;
 }
 
 let seq = 0;
@@ -94,7 +96,7 @@ export class Ui {
     this.openMenu(align === 'below' ? { x: r.left, y: r.bottom + 6 } : { x: r.right + 8, y: r.top }, items);
   }
 
-  openProfile(userId: number, guildId: number | null, anchor: Element | MouseEvent) {
+  openProfile(userId: number, guildId: number | null, anchor: Element | MouseEvent, compact = false) {
     let x: number;
     let y: number;
     let side: 'right' | 'left' = 'right';
@@ -117,7 +119,7 @@ export class Ui {
       }
     }
     this.menu.set(null);
-    this.profile.set({ userId, guildId, x, y, side });
+    this.profile.set({ userId, guildId, x, y, side, compact });
   }
 
   closeMenus() {

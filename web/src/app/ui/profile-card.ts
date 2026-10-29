@@ -125,7 +125,7 @@ const BADGES: Record<string, Badge> = {
             </div>
           </div>
         }
-        @if (call(); as c) {
+        @if (!compact() && call(); as c) {
           <div class="profile-call">
             <div class="pc-head">{{ c.streaming ? 'Ao vivo' : 'Em voz' }}</div>
             <div class="pc-body">
@@ -164,21 +164,23 @@ const BADGES: Record<string, Badge> = {
             }
           </div>
         }
-        <div class="profile-section">
-          <h3>Membro desde</h3>
-          <div class="profile-dates">
-            @let joined = joinedAt();
-            @if (joined && date(joined) === date(u.createdAt)) {
-              <span class="pd-item" appTip="No Resenha e neste servidor"><app-icon name="chat" [size]="14" />{{ date(u.createdAt) }}</span>
-            } @else {
-              <span class="pd-item" appTip="No Resenha"><app-icon name="chat" [size]="14" />{{ date(u.createdAt) }}</span>
-              @if (joined) {
-                <span class="pd-dot"></span>
-                <span class="pd-item" appTip="Neste servidor"><app-icon name="group" [size]="14" />{{ date(joined) }}</span>
+        @if (!compact()) {
+          <div class="profile-section">
+            <h3>Membro desde</h3>
+            <div class="profile-dates">
+              @let joined = joinedAt();
+              @if (joined && date(joined) === date(u.createdAt)) {
+                <span class="pd-item" appTip="No Resenha e neste servidor"><app-icon name="chat" [size]="14" />{{ date(u.createdAt) }}</span>
+              } @else {
+                <span class="pd-item" appTip="No Resenha"><app-icon name="chat" [size]="14" />{{ date(u.createdAt) }}</span>
+                @if (joined) {
+                  <span class="pd-dot"></span>
+                  <span class="pd-item" appTip="Neste servidor"><app-icon name="group" [size]="14" />{{ date(joined) }}</span>
+                }
               }
-            }
+            </div>
           </div>
-        </div>
+        }
         <ng-content />
       </div>
     </div>
@@ -189,6 +191,8 @@ export class ProfileCard {
   readonly guildId = input<number | null>(null);
   /** The settings preview: no server data, no buttons. */
   readonly preview = input(false);
+  /** Opened from the call list: leaves out the call card and "Membro desde". */
+  readonly compact = input(false);
 
   readonly store = inject(Store);
   readonly elapsed = elapsedLabel;

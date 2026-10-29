@@ -161,7 +161,7 @@ export class ContextMenu {
       @if (user(); as u) {
         <div class="menu-backdrop" (mousedown)="ui.closeMenus()"></div>
         <div class="profile-popout" #el [style.left.px]="pos().x" [style.top.px]="pos().y">
-          <app-profile-card [user]="u" [guildId]="p.guildId">
+          <app-profile-card [user]="u" [guildId]="p.guildId" [compact]="!!p.compact">
             @if (p.guildId != null && store.member(p.guildId, u.id); as m) {
               <div class="profile-section">
                 <h3>{{ m.roles.length ? 'Cargos' : 'Sem cargos' }}</h3>

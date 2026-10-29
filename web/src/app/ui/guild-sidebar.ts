@@ -213,7 +213,7 @@ export class GuildSidebar {
 
   profile(e: MouseEvent, v: VoiceState) {
     e.stopPropagation();
-    this.ui.openProfile(v.userId, this.guildId(), e.currentTarget as Element);
+    this.ui.openProfile(v.userId, this.guildId(), e.currentTarget as Element, true);
   }
 
   /** Clicking someone's "AO VIVO" opens their stream, like in Discord. */
