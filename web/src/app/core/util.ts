@@ -69,9 +69,10 @@ export function formatTime(ts: number): string {
   return time.format(ts);
 }
 
+/** Like WhatsApp: today just the time, then "Ontem às", then the date. */
 export function formatTimestamp(ts: number): string {
   const now = Date.now();
-  if (sameDay(ts, now)) return `Hoje às ${time.format(ts)}`;
+  if (sameDay(ts, now)) return time.format(ts);
   if (sameDay(ts, now - 86_400_000)) return `Ontem às ${time.format(ts)}`;
   return `${fullDate.format(ts)} ${time.format(ts)}`;
 }

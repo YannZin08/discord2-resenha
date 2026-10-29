@@ -193,7 +193,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                     <div class="msg-avatar"><app-avatar [user]="me" [size]="40" /></div>
                     <h3 class="msg-header">
                       <span class="msg-author">{{ me.displayName }}</span>
-                      <span class="msg-time">Hoje às 12:00</span>
+                      <span class="msg-time">12:00</span>
                     </h3>
                     <div class="msg-content">Olha como fica o <strong>Resenha</strong> com esse tema 👀</div>
                   </div>
@@ -203,7 +203,7 @@ const BANNERS = ['#5865f2', '#3ba55c', '#faa61a', '#ed4245', '#eb459f', '#1abc9c
                   <div class="message mine">
                     <h3 class="msg-header">
                       <span class="msg-author">Você</span>
-                      <span class="msg-time">Hoje às 12:01</span>
+                      <span class="msg-time">12:01</span>
                     </h3>
                     <div class="msg-content">E assim ficam as suas</div>
                   </div>
